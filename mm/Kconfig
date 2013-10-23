@@ -432,62 +432,6 @@ config CMA_BEST_FIT
 	  allocates area from the smallest hole that is big enough for
 	  allocation in question.
 
-config FRONTSWAP
-	bool "Enable frontswap to cache swap pages if tmem is present"
-	depends on SWAP
+config FADV_NOACTIVE
+	bool "fadvise noactive option support"
 	default n
-	help
-	  Frontswap is so named because it can be thought of as the opposite
-	  of a "backing" store for a swap device.  The data is stored into
-	  "transcendent memory", memory that is not directly accessible or
-	  addressable by the kernel and is of unknown and possibly
-	  time-varying size.  When space in transcendent memory is available,
-	  a significant swap I/O reduction may be achieved.  When none is
-	  available, all frontswap calls are reduced to a single pointer-
-	  compare-against-NULL resulting in a negligible performance hit
-	  and swap data is stored as normal on the matching swap device.
-
-	  If unsure, say Y to enable frontswap.
-
-config ZSMALLOC_NEW
-	tristate "Memory allocator for compressed pages"
-	default n
-	help
-	  zsmalloc is a slab-based memory allocator designed to store
-	  compressed RAM pages.  zsmalloc uses virtual memory mapping
-	  in order to reduce fragmentation.  However, this results in a
-	  non-standard allocator interface where a handle, not a pointer, is
-	  returned by an alloc().  This handle must be mapped in order to
-	  access the allocated space.
-
-config PGTABLE_MAPPING
-	bool "Use page table mapping to access object in zsmalloc"
-	depends on ZSMALLOC_NEW
-	help
-	  By default, zsmalloc uses a copy-based object mapping method to
-	  access allocations that span two pages. However, if a particular
-	  architecture (ex, ARM) performs VM mapping faster than copying,
-	  then you should select this. This causes zsmalloc to use page table
-	  mapping rather than copying for object mapping.
-
-	  You can check speed with zsmalloc benchmark[1].
-	  [1] https://github.com/spartacus06/zsmalloc
-
-config ZSWAP
-	bool "In-kernel swap page compression"
-	depends on FRONTSWAP && CRYPTO
-	select CRYPTO_LZO
-	select ZSMALLOC_NEW
-	select SWAP_DISABLE_RUNTIME_DISCARD
-	default n
-	help
-	  Zswap is a backend for the frontswap mechanism in the VMM.
-	  It receives pages from frontswap and attempts to store them
-	  in a compressed memory pool, resulting in an effective
-	  partial memory reclaim.  In addition, pages and be retrieved
-	  from this compressed store much faster than most tradition
-	  swap devices resulting in reduced I/O and faster performance
-	  for many workloads.
-
-config SWAP_DISABLE_RUNTIME_DISCARD
-	def_bool n

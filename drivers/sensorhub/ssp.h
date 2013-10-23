@@ -39,13 +39,12 @@
 #include "ssp_sensorhub.h"
 #endif
 
+#undef FEATURE_STEP_SENSOR
 #define SSP_DBG		1
 
 #define SUCCESS		1
 #define FAIL		0
 #define ERROR		-1
-
-#define CONFIG_SSP_PM /* We do nothing on suspend / resume yet. */
 
 /*
  1. ACCEL : 6 Bytes
@@ -251,12 +250,18 @@ enum {
 	LIGHT_SENSOR,
 	PROXIMITY_RAW,
 	ORIENTATION_SENSOR,
+	SIG_MOTION_SENSOR,
+#ifdef FEATURE_STEP_SENSOR
+	STEP_DETECTOR,
+	STEP_COUNTER,
+#endif
 	SENSOR_MAX,
 };
 
+/* Continuous sensors to check if MCU is stopped. */
 #define	SSP_BYPASS_SENSORS_EN_ALL	(1 << ACCELEROMETER_SENSOR |\
 	1 << GYROSCOPE_SENSOR | 1 << GEOMAGNETIC_SENSOR | 1 << PRESSURE_SENSOR |\
-	1 << TEMPERATURE_HUMIDITY_SENSOR | 1 << LIGHT_SENSOR) /* Proximity sensor is not continuous */
+	1 << TEMPERATURE_HUMIDITY_SENSOR | 1 << LIGHT_SENSOR)
 
 /* SENSOR_FACTORY_MODE_TYPE */
 enum {
@@ -294,6 +299,11 @@ struct sensor_value {
 		u8 prox[4];
 		s16 data[5];
 		s32 pressure[3];
+		u8 sig_motion;
+#ifdef FEATURE_STEP_SENSOR
+		u8 step_det;
+		u32 step_diff;
+#endif
 	};
 };
 
@@ -314,8 +324,12 @@ struct ssp_data {
 	struct input_dev *light_input_dev;
 	struct input_dev *prox_input_dev;
 	struct input_dev *temp_humi_input_dev;
+	struct input_dev *sig_motion_input_dev;
+#ifdef FEATURE_STEP_SENSOR
+	struct input_dev *step_det_input_dev;
+	struct input_dev *step_cnt_input_dev;
+#endif
 
-	struct device *sen_dev;
 	struct device *mcu_device;
 	struct device *acc_device;
 	struct device *gyro_device;
@@ -375,6 +389,9 @@ struct ssp_data {
 	unsigned int uFactorydataReady;
 	s32 iPressureCal;
 	unsigned int uTempCount;
+#ifdef FEATURE_STEP_SENSOR
+	u64 step_count_total;
+#endif
 
 	atomic_t aSensorEnable;
 	int64_t adDelayBuf[SENSOR_MAX];
@@ -438,10 +455,10 @@ void remove_pressure_factorytest(struct ssp_data *);
 void remove_magnetic_factorytest(struct ssp_data *);
 void remove_temphumidity_factorytest(struct ssp_data *data);
 void remove_magnetic(struct ssp_data *data);
+void sensors_remove_symlink(struct input_dev *);
 void destroy_sensor_class(void);
 int initialize_event_symlink(struct ssp_data *);
-int sensors_create_symlink(struct kobject *target,
-		      const char *name);
+int sensors_create_symlink(struct input_dev *);
 int accel_open_calibration(struct ssp_data *);
 int gyro_open_calibration(struct ssp_data *);
 int pressure_open_calibration(struct ssp_data *);
@@ -480,6 +497,11 @@ void report_prox_data(struct ssp_data *, struct sensor_value *);
 void report_prox_raw_data(struct ssp_data *, struct sensor_value *);
 int print_mcu_debug(char *, int *, int);
 void report_temp_humidity_data(struct ssp_data *, struct sensor_value *);
+void report_sig_motion_data(struct ssp_data *, struct sensor_value *);
+#ifdef FEATURE_STEP_SENSOR
+void report_step_det_data(struct ssp_data *, struct sensor_value *);
+void report_step_cnt_data(struct ssp_data *, struct sensor_value *);
+#endif
 unsigned int get_module_rev(struct ssp_data *data);
 void reset_mcu(struct ssp_data *);
 void convert_acc_data(s16 *);

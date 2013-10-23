@@ -688,6 +688,10 @@ static int __devinit s2mps11_rtc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, s2mps11);
 
 	ret = s2mps11_rtc_init_reg(s2mps11);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Failed to initialize RTC reg:%d\n", ret);
+		goto out_rtc;
+	}
 
 	if (s2mps11->wtsr_smpl) {
 		s2mps11_rtc_enable_wtsr(s2mps11, true);
@@ -730,7 +734,6 @@ static int __devinit s2mps11_rtc_probe(struct platform_device *pdev)
 
 out_rtc:
 	platform_set_drvdata(pdev, NULL);
-	kfree(s2mps11);
 	return ret;
 }
 

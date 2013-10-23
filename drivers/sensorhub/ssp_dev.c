@@ -112,6 +112,9 @@ static void initialize_variable(struct ssp_data *data)
 	data->prox_device = NULL;
 	data->light_device = NULL;
 	data->ges_device = NULL;
+#ifdef FEATURE_STEP_SENSOR
+	data->step_count_total = 0;
+#endif
 
 	initialize_function_pointer(data);
 }
@@ -421,9 +424,8 @@ static void ssp_shutdown(struct i2c_client *client)
 	gpio_free(data->client->irq);
 
 	remove_magnetic(data);
-
-	remove_sysfs(data);
 	remove_event_symlink(data);
+	remove_sysfs(data);
 	remove_input_dev(data);
 
 #ifdef CONFIG_SENSORS_SSP_SENSORHUB
@@ -477,7 +479,6 @@ static void ssp_late_resume(struct early_suspend *handler)
 }
 
 #else /* CONFIG_HAS_EARLYSUSPEND */
-#ifdef CONFIG_SSP_PM
 static int ssp_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
@@ -510,7 +511,6 @@ static const struct dev_pm_ops ssp_pm_ops = {
 	.suspend_late = ssp_suspend,
 	.resume_early = ssp_resume
 };
-#endif
 #endif /* CONFIG_HAS_EARLYSUSPEND */
 
 static const struct i2c_device_id ssp_id[] = {
@@ -526,9 +526,7 @@ static struct i2c_driver ssp_driver = {
 	.id_table = ssp_id,
 	.driver = {
 #ifndef CONFIG_HAS_EARLYSUSPEND
-#ifdef CONFIG_SSP_PM
 		   .pm = &ssp_pm_ops,
-#endif
 #endif
 		   .owner = THIS_MODULE,
 		   .name = "ssp"

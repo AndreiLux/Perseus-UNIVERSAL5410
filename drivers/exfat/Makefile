@@ -1,4 +1,4 @@
-obj-m += exfat_core.o exfat_fs.o
+obj-y += exfat_core.o exfat_fs.o
 
 exfat_fs-y	:= exfat_super.o
 

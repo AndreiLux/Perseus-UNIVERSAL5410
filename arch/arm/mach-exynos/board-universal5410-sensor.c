@@ -29,6 +29,9 @@
 #ifdef CONFIG_SENSORS_CM36651
 #include <linux/sensor/cm36651.h>
 #endif
+#ifdef CONFIG_SENSORS_SSP_ATSN01P
+#include <linux/atsn01p.h>
+#endif
 #ifdef CONFIG_SENSORS_SSP
 #include <linux/ssp_platformdata.h>
 #ifdef CONFIG_SENSORS_SSP_C12SD
@@ -144,31 +147,6 @@ static struct accel_platform_data accel_pdata = {
 static struct gyro_platform_data gyro_pdata = {
 	.gyro_get_position = stm_get_position,
 	.axis_adjust = true,
-};
-#endif
-
-#if defined(CONFIG_MACH_V1)
-static struct i2c_gpio_platform_data i2c23_platdata = {
-	.sda_pin = GPIO_AP_MCU_SDA_18V,
-	.scl_pin = GPIO_AP_MCU_SCL_18V,
-	.udelay = 2,		/* 250KHz */
-	.sda_is_open_drain = 0,
-	.scl_is_open_drain = 0,
-	.scl_is_output_only = 0,
-};
-
-static struct platform_device s3c_device_i2c23 = {
-	.name = "i2c-gpio",
-	.id = 23,
-	.dev.platform_data = &i2c23_platdata,
-};
-
-static struct i2c_board_info i2c_devs23_emul[] __initdata = {
-	{
-		I2C_BOARD_INFO("ssp", 0x18),
-		.platform_data = &ssp_pdata,
-		.irq = GPIO_MCU_AP_INT,
-	},
 };
 #endif
 
@@ -319,7 +297,7 @@ static void ssp_get_positions(int *acc, int *mag)
 	*mag = AK8963C_BOTTOM_LOWER_LEFT;
 #elif defined(CONFIG_MACH_J_CHN_CTC) || defined(CONFIG_MACH_J_CHN_CU)
 	*acc = K330_TOP_UPPER_LEFT;
-		*mag = AK8963C_BOTTOM_UPPER_LEFT;
+	*mag = AK8963C_BOTTOM_UPPER_LEFT;
 #else
 	*acc = K330_TOP_UPPER_LEFT;
 	*mag = AK8963C_TOP_LOWER_RIGHT;
@@ -644,12 +622,108 @@ static struct i2c_board_info i2c_devs11_emul[] __initdata = {
 };
 #endif
 
+#ifdef CONFIG_SENSORS_SSP_ATSN01P
+static struct atsn01p_platform_data atsn01p_pdata = {
+	.t_out = GPIO_RF_TOUCH_INT,
+	.adj_det = GPIO_ADJ_DET_AP,
+};
+
+static struct i2c_gpio_platform_data i2c23_platdata = {
+	.sda_pin = GPIO_GRIP_SDA,
+	.scl_pin = GPIO_GRIP_SCL,
+	.udelay = 2,		/* 250KHz */
+	.sda_is_open_drain = 0,
+	.scl_is_open_drain = 0,
+	.scl_is_output_only = 0,
+};
+
+static struct platform_device s3c_device_i2c23 = {
+	.name = "i2c-gpio",
+	.id = 23,
+	.dev.platform_data = &i2c23_platdata,
+};
+
+static struct i2c_board_info i2c_devs23_emul[] __initdata = {
+	{
+		I2C_BOARD_INFO("atsn01p", (0x48 >> 1)),
+		.platform_data = &atsn01p_pdata,
+	},
+};
+
+static int grip_gpio_init(void)
+{
+	int ret = gpio_request(GPIO_RF_TOUCH_INT, "atsn01p_grip_irq");
+
+	pr_info("%s\n", __func__);
+
+	if (ret) {
+		pr_err("%s, Failed to request gpio atsn01p_grip_irq(%d)\n",
+			__func__, ret);
+		return ret;
+	}
+
+	/* Grip sensor interrupt pin initialization */
+	s3c_gpio_cfgpin(GPIO_RF_TOUCH_INT, S3C_GPIO_INPUT);
+	gpio_set_value(GPIO_RF_TOUCH_INT, 2);
+	s3c_gpio_setpull(GPIO_RF_TOUCH_INT, S3C_GPIO_PULL_UP);
+	s5p_gpio_set_drvstr(GPIO_RF_TOUCH_INT, S5P_GPIO_DRVSTR_LV1);
+	i2c_devs23_emul[0].irq = gpio_to_irq(GPIO_RF_TOUCH_INT);
+
+	/* test jig detect pin initialization */
+	ret = gpio_request(GPIO_ADJ_DET_AP, "atsn01p_adj_det");
+
+	s3c_gpio_cfgpin(GPIO_ADJ_DET_AP, S3C_GPIO_INPUT);
+	gpio_set_value(GPIO_ADJ_DET_AP, 0);
+	s3c_gpio_setpull(GPIO_ADJ_DET_AP, S3C_GPIO_PULL_NONE);
+	s5p_gpio_set_drvstr(GPIO_ADJ_DET_AP, S5P_GPIO_DRVSTR_LV1);
+
+	return ret;
+}
+
+static void grip_init_code_set(void)
+{
+	atsn01p_pdata.cr_divsr = 10;
+	atsn01p_pdata.cr_divnd = 12;
+	atsn01p_pdata.cs_divsr = 10;
+	atsn01p_pdata.cs_divnd = 12;
+
+	atsn01p_pdata.init_code[SET_UNLOCK] = 0x5a;
+	atsn01p_pdata.init_code[SET_RST_ERR] = 0x33;
+	atsn01p_pdata.init_code[SET_PROX_PER] = 0x40;
+	atsn01p_pdata.init_code[SET_PAR_PER] = 0x40;
+	atsn01p_pdata.init_code[SET_TOUCH_PER] = 0x3c;
+	atsn01p_pdata.init_code[SET_HI_CAL_PER] = 0x30;
+	atsn01p_pdata.init_code[SET_BSMFM_SET] = 0x31;
+	atsn01p_pdata.init_code[SET_ERR_MFM_CYC] = 0x33;
+	atsn01p_pdata.init_code[SET_TOUCH_MFM_CYC] = 0x34;
+	atsn01p_pdata.init_code[SET_HI_CAL_SPD] = 0x21;
+	atsn01p_pdata.init_code[SET_CAL_SPD] = 0x04;
+	atsn01p_pdata.init_code[SET_INIT_REF] = 0x00;
+	atsn01p_pdata.init_code[SET_BFT_MOT] = 0x40;
+	atsn01p_pdata.init_code[SET_TOU_RF_EXT] = 0x00;
+	atsn01p_pdata.init_code[SET_OFF_TIME] = 0x30;
+	atsn01p_pdata.init_code[SET_SENSE_TIME] = 0x28;
+	atsn01p_pdata.init_code[SET_DUTY_TIME] = 0x50;
+	atsn01p_pdata.init_code[SET_HW_CON1] = 0x78;
+	atsn01p_pdata.init_code[SET_HW_CON2] = 0x27;
+	atsn01p_pdata.init_code[SET_HW_CON3] = 0x20;
+	atsn01p_pdata.init_code[SET_HW_CON4] = 0x27;
+	atsn01p_pdata.init_code[SET_HW_CON5] = 0x83;
+	atsn01p_pdata.init_code[SET_HW_CON6] = 0x3f;
+	atsn01p_pdata.init_code[SET_HW_CON7] = 0x48;
+	atsn01p_pdata.init_code[SET_HW_CON8] = 0x20;
+	atsn01p_pdata.init_code[SET_HW_CON9] = 0x04;
+	atsn01p_pdata.init_code[SET_HW_CON10] = 0x27;
+	atsn01p_pdata.init_code[SET_HW_CON11] = 0x00;
+}
+#endif
+
 static struct platform_device *universal5410_sensor_devices[] __initdata = {
 #if defined(CONFIG_SENSORS_SSP)
-#if defined(CONFIG_MACH_V1)
+	&exynos5_device_hs_i2c3,
+#if defined(CONFIG_SENSORS_SSP_ATSN01P)
 	&s3c_device_i2c23,
 #endif
-	&exynos5_device_hs_i2c3,
 #endif
 #if defined(CONFIG_SENSORS_CM36651)
 	&s3c_device_i2c9,
@@ -700,21 +774,13 @@ void __init exynos5_universal5410_sensor_init(void)
 			__func__, err);
 #endif
 
-#if defined(CONFIG_MACH_V1)
-	if (system_rev >= 2) {
-		/* hs-i2c device 3 is i2c7. */
-#if defined(CONFIG_SENSORS_SSP)
-		/* MCU does not support 400kHz with 8Mhz clock. */
-		exynos5_hs_i2c3_set_platdata(&hs_i2c3_data);
-#else
-		exynos5_hs_i2c3_set_platdata(NULL);
+#if defined(CONFIG_SENSORS_SSP_ATSN01P)
+	grip_gpio_init();
+	grip_init_code_set();
+	i2c_register_board_info(23, i2c_devs23_emul,
+		ARRAY_SIZE(i2c_devs23_emul));
 #endif
-		i2c_register_board_info(7, i2c_devs7, ARRAY_SIZE(i2c_devs7));
-	} else {
-		i2c_register_board_info(23, i2c_devs23_emul,
-			ARRAY_SIZE(i2c_devs23_emul));
-	}
-#else
+
 	/* hs-i2c device 3 is i2c7. */
 #if defined(CONFIG_SENSORS_SSP)
 	/* MCU does not support 400kHz with 8Mhz clock. */
@@ -723,7 +789,6 @@ void __init exynos5_universal5410_sensor_init(void)
 	exynos5_hs_i2c3_set_platdata(NULL);
 #endif
 	i2c_register_board_info(7, i2c_devs7, ARRAY_SIZE(i2c_devs7));
-#endif
 
 #if defined(CONFIG_SENSORS_CM36651)
 	/* Optical Sensor */

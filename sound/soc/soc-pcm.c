@@ -259,6 +259,7 @@ static int soc_pcm_open(struct snd_pcm_substream *substream)
 	codec_dai->active++;
 	rtd->codec->active++;
 	mutex_unlock(&rtd->pcm_mutex);
+
 	return 0;
 
 config_err:

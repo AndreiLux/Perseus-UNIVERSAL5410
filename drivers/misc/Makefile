@@ -63,3 +63,7 @@ obj-y				+= 2mic/
 
 # Secure OS Mobicore Interface
 obj-$(CONFIG_MOBICORE_DRIVER)  += tzic.o
+
+ifeq ($(TIMA_ENABLED),1)
+obj-$(CONFIG_TIMA_LOG)		+= tima_debug_log.o
+endif

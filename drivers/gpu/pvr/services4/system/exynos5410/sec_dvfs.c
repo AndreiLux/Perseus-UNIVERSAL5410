@@ -249,7 +249,10 @@ void sec_gpu_dvfs_down_requirement_reset()
 	int level;
 
 	level = sec_gpu_dvfs_level_from_clk_get(gpu_clock_get());
-	sgx_dvfs_down_requirement = g_gpu_dvfs_data[level].stay_total_count;
+	if (level >= 0)
+		sgx_dvfs_down_requirement = g_gpu_dvfs_data[level].stay_total_count;
+	else
+		sgx_dvfs_down_requirement = DOWN_REQUIREMENT_THRESHOLD;
 }
 
 extern unsigned int *g_debug_CCB_Info_RO;

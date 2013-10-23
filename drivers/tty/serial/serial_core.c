@@ -1993,7 +1993,9 @@ int uart_resume_port(struct uart_driver *drv, struct uart_port *uport)
 
 		uart_change_pm(state, 0);
 		spin_lock_irq(&uport->lock);
+#if !defined(CONFIG_GPS_BCMxxxxx)
 		ops->set_mctrl(uport, 0);
+#endif
 		spin_unlock_irq(&uport->lock);
 		if (console_suspend_enabled || !uart_console(uport)) {
 			/* Protected by port mutex for now */

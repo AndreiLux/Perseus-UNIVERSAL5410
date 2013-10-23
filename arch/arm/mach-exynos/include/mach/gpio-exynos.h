@@ -31,7 +31,7 @@
 #endif
 #elif defined(CONFIG_V1_LTE_REV00)
 #include "gpio-v1-lte-rev00.h"
-#elif defined(CONFIG_V1_3G_REV00)
+#elif defined(CONFIG_V1_3G_REV00)  || defined(CONFIG_V1_3G_REV03)
 #include "gpio-v1-3g-rev00.h"
 #elif defined(CONFIG_V1_WIFI_REV00)
 #include "gpio-v1-wifi-rev00.h"

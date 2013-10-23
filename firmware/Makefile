@@ -140,12 +140,7 @@ fw-shipped-$(CONFIG_USB_SERIAL_XIRCOM) += keyspan_pda/xircom_pgs.fw
 fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
-fw-shipped-$(CONFIG_EPEN_WACOM_G5SP) += epen/W8501.bin epen/W8501_P48.bin
-fw-shipped-$(CONFIG_EPEN_WACOM_G9PM) += epen/W9001_B746.bin epen/W9001_B713.bin epen/W9001_B660.bin \
-			epen/W9001_B746S.bin epen/W9001_B746L.bin \
-			epen/W9001_B746JD.bin \
-			epen/W9001_B746VZW.bin epen/W9001_B746USC.bin \
-			epen/W9001_0700.bin
+fw-shipped-$(CONFIG_EPEN_WACOM_G9PM) += epen/W9001_B887.bin epen/W9001_B911.bin
 fw-shipped-$(CONFIG_EPEN_WACOM_G9PL) += epen/W9002_B781.bin
 fw-shipped-$(CONFIG_EPEN_WACOM_G9PLL) += epen/W9007_B804.bin epen/W9007_B878.bin
 
@@ -165,9 +160,8 @@ endif
 
 TSPFIRMWARE_DIRECTORY = firmware/tsp_synaptics
 ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
-fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI) += tsp_synaptics/synaptics_a1.fw \
-	tsp_synaptics/synaptics_b0_3_4.fw tsp_synaptics/synaptics_b0_4_0.fw \
-	tsp_synaptics/synaptics_b0_4_3.fw tsp_synaptics/synaptics_b0_5_1.fw \
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI) += tsp_synaptics/synaptics_b0_h.fw \
+	tsp_synaptics/synaptics_b0_5_1.fw \
 	tsp_synaptics/synaptics_b0_fac.fw tsp_synaptics/synaptics_b0_5_1_fac.fw
 else
 $(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)

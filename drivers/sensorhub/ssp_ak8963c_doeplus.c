@@ -51,9 +51,7 @@ void initialize_magnetic(struct ssp_data *data)
 
 	data->mag_input_dev = mag_input_dev;
 
-	iRet = sysfs_create_link(&data->sen_dev->kobj,
-		&data->mag_input_dev->dev.kobj,
-		data->mag_input_dev->name);
+	sensors_create_symlink(data->mag_input_dev);
 
 exit:
 	return;
@@ -61,9 +59,7 @@ exit:
 
 void remove_magnetic(struct ssp_data *data)
 {
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->mag_input_dev->dev.kobj,
-		data->mag_input_dev->name);
+	sensors_remove_symlink(data->mag_input_dev);
 
 	input_unregister_device(data->mag_input_dev);
 }

@@ -126,6 +126,23 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 			data->buf[uSensor].prox[0], data->buf[uSensor].prox[1],
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
+	case SIG_MOTION_SENSOR:
+		ssp_dbg("[SSP] %u : %u(%ums)\n", uSensor,
+			data->buf[uSensor].sig_motion,
+			get_msdelay(data->adDelayBuf[uSensor]));
+		break;
+#ifdef FEATURE_STEP_SENSOR
+	case STEP_DETECTOR:
+		ssp_dbg("[SSP] %u : %u(%ums)\n", uSensor,
+			data->buf[uSensor].step_det,
+			get_msdelay(data->adDelayBuf[uSensor]));
+		break;
+	case STEP_COUNTER:
+		ssp_dbg("[SSP] %u : %u(%ums)\n", uSensor,
+			data->buf[uSensor].step_diff,
+			get_msdelay(data->adDelayBuf[uSensor]));
+		break;
+#endif
 	default:
 		ssp_dbg("Wrong sensorCnt: %u\n", uSensor);
 		break;
@@ -152,7 +169,7 @@ static void debug_work_func(struct work_struct *work)
 		return;
 	}
 
-	for (uSensorCnt = 0; uSensorCnt < PROXIMITY_RAW; uSensorCnt++)
+	for (uSensorCnt = 0; uSensorCnt < (SENSOR_MAX - 1); uSensorCnt++)
 		if (atomic_read(&data->aSensorEnable) & (1 << uSensorCnt))
 			print_sensordata(data, uSensorCnt);
 

@@ -44,8 +44,8 @@ static int wacom_flash_cmd(struct wacom_i2c *wac_i2c)
 	int rv, len;
 	u8 buf[10];
 
-#if defined(CONFIG_MACH_KONA) \
-	|| defined(CONFIG_MACH_V1)
+#if defined(CONFIG_EPEN_WACOM_G9PL) \
+	|| defined(CONFIG_EPEN_WACOM_G9PLL)
 		buf[0] = 0x0d;
 		buf[1] = FLASH_START0;
 		buf[2] = FLASH_START1;
@@ -163,7 +163,7 @@ static bool flash_query(struct wacom_i2c *wac_i2c)
 		return false;
 	}
 
-#ifdef CONFIG_MACH_KONA
+#ifdef CONFIG_EPEN_WACOM_G9PL
 	usleep_range(10000, 10000);
 #endif
 
@@ -245,7 +245,7 @@ static bool flash_blver(struct wacom_i2c *wac_i2c, int *blver)
 		return false;
 	}
 
-#ifdef CONFIG_MACH_KONA
+#ifdef CONFIG_EPEN_WACOM_G9PL
 	usleep_range(10000, 10000);
 #else
 	usleep_range(1000, 1000);
@@ -357,13 +357,13 @@ static bool flash_end(struct wacom_i2c *wac_i2c)
 	command[8] = BOOT_CMD_REPORT_ID;
 	command[9] = BOOT_EXIT;
 	command[10] = ECH = 7;
-#ifdef CONFIG_MACH_V1
+#ifdef CONFIG_EPEN_WACOM_G9PLL
 	rv = wacom_i2c_send(wac_i2c, command, 11, WACOM_I2C_MODE_BOOT);
 	if (rv < 0) {
 		printk(KERN_DEBUG"epen:%s 2 rv:%d \n", __func__, rv);
 		return false;
 	}
-#elif defined(CONFIG_MACH_KONA)
+#elif defined(CONFIG_EPEN_WACOM_G9PL)
 	rv = wacom_i2c_send(wac_i2c, command, 4, WACOM_I2C_MODE_BOOT);
 	if (rv < 0) {
 		printk(KERN_DEBUG "epen:1 rv:%d\n", rv);
@@ -474,7 +474,7 @@ retry:
 			return false;
 		}
 
-#ifdef CONFIG_MACH_KONA
+#ifdef CONFIG_EPEN_WACOM_G9PL
 		switch (i) {
 		case 0:
 		case 1:
@@ -1123,27 +1123,24 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 	int iBLVer, iMpuType;
 	int iRet;
 	unsigned long ulMaxRange;
-#ifdef CONFIG_MACH_KONA
+#ifdef CONFIG_EPEN_WACOM_G9PL
 	int iChecksum;
 	int iStatus;
 	bool bBootFlash = false;
 	bool bMarking;
 #endif
 
-	if (Binary == NULL) {
+	if (fw_data == NULL) {
 		printk(KERN_ERR"epen:Data is NULL. Exit.\n");
 		return -1;
 	}
 
-#ifdef WACOM_HAVE_FWE_PIN
-	if (wac_i2c->have_fwe_pin) {
-		wac_i2c->wac_pdata->compulsory_flash_mode(true);
-		/*Reset */
-		wac_i2c->wac_pdata->reset_platform_hw();
-		msleep(200);
-		printk(KERN_DEBUG "epen:Set FWE\n");
-	}
-#endif
+	wac_i2c->wac_pdata->compulsory_flash_mode(true);
+	/*Reset */
+	wac_i2c->wac_pdata->reset_platform_hw();
+	msleep(200);
+	printk(KERN_DEBUG "epen:Set FWE\n");
+
 	wake_lock(&wac_i2c->wakelock);
 
 	printk(KERN_DEBUG "epen:start getting the boot loader version\n");
@@ -1163,7 +1160,7 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 		goto fw_update_error;
 	}
 
-#ifdef CONFIG_MACH_V1
+#ifdef CONFIG_EPEN_WACOM_G9PLL
 	if (iMpuType != MPU_W9007) {
 		printk(KERN_DEBUG"epen:MPU is not for W9007 : %x \n", iMpuType);
 		return EXIT_FAIL_GET_MPU_TYPE;
@@ -1177,7 +1174,7 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 	start_address = START_ADDR;
 	max_address = MAX_ADDR;
 
-#ifdef CONFIG_MACH_KONA
+#ifdef CONFIG_EPEN_WACOM_G9PL
 	eraseBlock[eraseBlockNum++] = 2;
 	eraseBlock[eraseBlockNum++] = 1;
 	eraseBlock[eraseBlockNum++] = 0;
@@ -1189,14 +1186,14 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 	}
 #endif
 
-#ifdef CONFIG_MACH_KONA
+#ifdef CONFIG_EPEN_WACOM_G9PL
 	/*If MPU is in Boot mode, do below */
 	if (bBootFlash)
 		eraseBlock[eraseBlockNum++] = 4;
 
 	printk(KERN_DEBUG "epen:obtaining the checksum\n");
 	/*Calculate checksum */
-	iChecksum = wacom_i2c_flash_chksum(wac_i2c, Binary, &max_address);
+	iChecksum = wacom_i2c_flash_chksum(wac_i2c, fw_data, &max_address);
 	printk(KERN_DEBUG "epen:Checksum is :%d\n", iChecksum);
 
 	printk(KERN_DEBUG "epen:setting the security unlock\n");
@@ -1228,14 +1225,14 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 	}
 	printk(KERN_DEBUG "epen:erasing done\n");
 
-#ifdef CONFIG_MACH_KONA
+#ifdef CONFIG_EPEN_WACOM_G9PL
 	max_address = 0x11FC0;
 #endif
 
 	printk(KERN_DEBUG "epen:writing new firmware\n");
 	/*Write the new program */
 	bRet =
-	    flash_write(wac_i2c, Binary, DATA_SIZE, start_address, &max_address,
+	    flash_write(wac_i2c, fw_data, DATA_SIZE, start_address, &max_address,
 			iMpuType);
 	if (!bRet) {
 		printk(KERN_DEBUG "epen:failed to write firmware\n");
@@ -1243,7 +1240,7 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 		goto fw_update_error;
 	}
 
-#ifdef CONFIG_MACH_KONA
+#ifdef CONFIG_EPEN_WACOM_G9PL
 	printk(KERN_DEBUG "epen:start marking\n");
 	/*Set mark in writing process */
 	bRet = flash_marking(wac_i2c, DATA_SIZE, true, iMpuType);
@@ -1260,7 +1257,7 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 	printk(KERN_DEBUG "epen:start the verification\n");
 	/*Verify the written program */
 	bRet =
-	    flash_verify(wac_i2c, Binary, DATA_SIZE, start_address,
+	    flash_verify(wac_i2c, fw_data, DATA_SIZE, start_address,
 			 &max_address, iMpuType);
 	if (!bRet) {
 		printk(KERN_DEBUG "epen:failed to verify the firmware\n");
@@ -1292,13 +1289,10 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 fw_update_error:
 	wake_unlock(&wac_i2c->wakelock);
 
-#ifdef WACOM_HAVE_FWE_PIN
-	if (wac_i2c->have_fwe_pin) {
-		wac_i2c->wac_pdata->compulsory_flash_mode(false);
-		/*Reset */
-		wac_i2c->wac_pdata->reset_platform_hw();
-		msleep(200);
-	}
-#endif
+	wac_i2c->wac_pdata->compulsory_flash_mode(false);
+	/*Reset */
+	wac_i2c->wac_pdata->reset_platform_hw();
+	msleep(200);
+
 	return iRet;
 }

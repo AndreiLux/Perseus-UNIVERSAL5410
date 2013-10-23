@@ -31,7 +31,30 @@
 
 static void ymu831_set_micbias(int en)
 {
-	gpio_set_value(EXYNOS5410_GPJ1(2), en);
+#ifdef GPIO_MICBIAS_EN
+#ifdef CONFIG_MACH_HA
+	if (system_rev < 0x1)
+		gpio_set_value(GPIO_SUB_MICBIAS_EN, en);
+	else
+		gpio_set_value(GPIO_MICBIAS_EN, en);
+#else
+	gpio_set_value(GPIO_MICBIAS_EN, en);
+#endif
+#endif
+}
+
+static void ymu831_set_sub_micbias(int en)
+{
+#ifdef GPIO_SUB_MICBIAS_EN
+#ifdef CONFIG_MACH_HA
+	if (system_rev < 0x1)
+		gpio_set_value(GPIO_MICBIAS_EN, en);
+	else
+		gpio_set_value(GPIO_SUB_MICBIAS_EN, en);
+#else
+	gpio_set_value(GPIO_SUB_MICBIAS_EN, en);
+#endif
+#endif
 }
 
 #ifdef CONFIG_SND_USE_YMU831_LDODE_GPIO
@@ -43,6 +66,7 @@ static void ymu831_set_ldod(int status)
 
 static struct mc_asoc_platform_data mc_asoc_pdata = {
 	.set_ext_micbias = ymu831_set_micbias,
+	.set_ext_sub_micbias = ymu831_set_sub_micbias,
 #ifdef CONFIG_SND_USE_YMU831_LDODE_GPIO
 	.set_codec_ldod = ymu831_set_ldod,
 #endif
@@ -149,15 +173,29 @@ static void universal5410_audio_gpio_init(void)
 	gpio_free(GPIO_YMU_LDO_EN);
 #endif
 
+#ifdef GPIO_MICBIAS_EN
 	/* Main Microphone BIAS */
-	err = gpio_request(EXYNOS5410_GPJ1(2), "MICBIAS");
+	err = gpio_request(GPIO_MICBIAS_EN, "MICBIAS");
 	if (err) {
 		pr_err(KERN_ERR "MICBIAS_EN GPIO set error!\n");
 		return;
 	}
-	gpio_direction_output(EXYNOS5410_GPJ1(2), 1);
-	gpio_set_value(EXYNOS5410_GPJ1(2), 0);
-	gpio_free(EXYNOS5410_GPJ1(2));
+	gpio_direction_output(GPIO_MICBIAS_EN, 1);
+	gpio_set_value(GPIO_MICBIAS_EN, 0);
+	gpio_free(GPIO_MICBIAS_EN);
+#endif
+
+#ifdef GPIO_SUB_MICBIAS_EN
+	/* Sub Microphone BIAS */
+	err = gpio_request(GPIO_SUB_MICBIAS_EN, "SUB_MICBIAS");
+	if (err) {
+		pr_err(KERN_ERR "SUB_MICBIAS_EN GPIO set error!\n");
+		return;
+	}
+	gpio_direction_output(GPIO_SUB_MICBIAS_EN, 1);
+	gpio_set_value(GPIO_SUB_MICBIAS_EN, 0);
+	gpio_free(GPIO_SUB_MICBIAS_EN);
+#endif
 
 #if defined(CONFIG_SND_DUOS_MODEM_SWITCH)
 	/* DUOS PCM SEL */

@@ -562,6 +562,12 @@ config STMPE811_ADC
 	help
 	 If you say yes here you get support for the STMicroelectronics
 	 STMPE811 8 channel ADC driver.
+
+config TIMA_LOG
+	tristate "Support for dumping TIMA log"
+	default y
+	help
+	  This option enables support for dumping TIMA log.
 	 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"

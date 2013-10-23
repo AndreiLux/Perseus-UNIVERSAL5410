@@ -23,6 +23,7 @@ enum SCENARIO {
 	VT_MODE,
 	BROWSER_MODE,
 	EBOOK_MODE,
+	EMAIL_MODE,
 	SCENARIO_MAX,
 	DMB_NORMAL_MODE = 20,
 	DMB_MODE_MAX,
@@ -42,12 +43,6 @@ enum POWER_LUT {
 	LUT_MAX,
 };
 
-enum NEGATIVE {
-	NEGATIVE_OFF,
-	NEGATIVE_ON,
-	NEGATIVE_MAX,
-};
-
 enum BYPASS {
 	BYPASS_OFF,
 	BYPASS_ON,
@@ -63,7 +58,7 @@ enum ACCESSIBILITY {
 
 struct mdnie_tuning_info {
 	const char *name;
-	unsigned short * const sequence;
+	unsigned short *sequence;
 };
 
 struct mdnie_info {
@@ -74,37 +69,31 @@ struct mdnie_info {
 	struct mutex		dev_lock;
 	struct mutex		lock;
 
-	unsigned int 		enable;
+	unsigned int		enable;
 
 	enum SCENARIO scenario;
 	enum MODE mode;
 	enum CABC cabc;
 	enum BYPASS bypass;
 	unsigned int tuning;
-	unsigned int negative;
 	unsigned int accessibility;
 	unsigned int color_correction;
 	char path[50];
 
-
 	struct notifier_block fb_notif;
-#if defined (CONFIG_S5P_MDNIE_PWM)
+
+#if defined(CONFIG_S5P_MDNIE_PWM)
 	struct backlight_device		*bd;
-    int *br_table;
-    struct clk *pwm_clk;
-    unsigned int support_pwm;
-#endif    
+	int				*br_table;
+	struct clk			*pwm_clk;
+	unsigned int			support_pwm;
+#endif
 };
 
 extern struct mdnie_info *g_mdnie;
 
 int s3c_mdnie_hw_init(void);
 int s3c_mdnie_set_size(void);
-
-void mdnie_s3cfb_resume(void);
-void mdnie_s3cfb_suspend(void);
-
-void mdnie_update(struct mdnie_info *mdnie, u8 force);
 
 extern int mdnie_calibration(unsigned short x, unsigned short y, int *r);
 extern int mdnie_request_firmware(const char *path, u16 **buf, const char *name);

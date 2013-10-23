@@ -542,6 +542,13 @@ HASH_Remove_Extended(HASH_TABLE *pHash, IMG_VOID *pKey)
 		PVR_DPF((PVR_DBG_ERROR, "HASH_Remove_Extended: Null hash table"));
 		return 0;
 	}
+	/* S.LSI */
+	if (pHash->pfnHashFunc == IMG_NULL || pHash->pfnKeyComp == IMG_NULL)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "HASH_Remove_Extended: Hash table: %p, Null pfnHashFunc: %p, pfnKeyComp: %p",
+			pHash, pHash->pfnHashFunc, pHash->pfnKeyComp));
+		return 0;
+	}
 
 	if (pHash->pfnHashFunc == IMG_NULL || pHash->pfnKeyComp == IMG_NULL)
 	{

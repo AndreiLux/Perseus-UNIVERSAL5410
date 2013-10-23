@@ -1060,6 +1060,11 @@ config V1_3G_REV00
 	help
 	  Support Vienna 3G rev0.0.
 
+config V1_3G_REV03
+	bool "Vienna 3G Rev0.3"
+	help
+	  Support Vienna 3G rev0.3.
+
 config V1_WIFI_REV00
 	bool "Vienna WIFI Rev0.0"
 	help
@@ -1074,6 +1079,7 @@ config MACH_JA
 
 config MACH_HA
 	bool "HA Board"
+	select EXYNOS_PERSISTENT_CLOCK
 	help
 	  Support HA Board.
 
@@ -1343,6 +1349,12 @@ config ANDROID_OOM_KILLER
 	  Hence, it makes more sense that we select the oom victim
 	  as android does when LMK is invoked.
 
+config INTERNAL_ISP_START_CAMERA
+	bool "Patch for internal isp start-up case"
+	default n
+	help
+	  To help fast memory allocation for camera start-up case
+
 config SEC_LOG
 	default n
 	bool "Enable support for sec_log" if EMBEDDED
@@ -1374,6 +1386,11 @@ config SEC_AVC_LOG
 	depends on SEC_DEBUG
 	help
 	  This option enables additional log buffer for audit log.
+config TIMA_DEBUG_LOG
+	default n
+	bool "Enable TIMA log support" if EMBEDDED
+	help
+	  This option enables TIMA_DEBUG log.
 
 config KOR_B10_DEBUG
 	bool "KOR ASTOOL debug feature"

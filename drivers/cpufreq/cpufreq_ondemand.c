@@ -60,13 +60,6 @@
 #define MIN_FREQUENCY_UP_STEP_LEVEL		(250000)
 #define MAX_FREQUENCY_UP_STEP_LEVEL		(1800000)
 
-#define MICRO_FREQUENCY_MIDDLE_LEVEL_1		(800000)
-#define MICRO_FREQUENCY_MIDDLE_LEVEL_2		(900000)
-#define MICRO_FREQUENCY_MIDDLE_LEVEL_3		(1000000)
-#define MICRO_FREQUENCY_MIDDLE_THRESHOLD_1	(65)
-#define MICRO_FREQUENCY_MIDDLE_THRESHOLD_2	(75)
-#define MICRO_FREQUENCY_MIDDLE_THRESHOLD_3	(85)
-
 /*
  * The polling frequency of this governor depends on the capability of
  * the processor. Default polling frequency is 1000 times the transition
@@ -159,7 +152,6 @@ static struct dbs_tuners {
 	bool up_conservative_mode;
 	unsigned int max_freq_blank;
 	bool boost_mode;
-	bool game_mode;
 } dbs_tuners_ins = {
 	.up_threshold = DEF_FREQUENCY_UP_THRESHOLD,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
@@ -177,7 +169,6 @@ static struct dbs_tuners {
 	.up_conservative_mode = false,
 	.max_freq_blank = MAX_FREQ_BLANK,
 	.boost_mode = false,
-	.game_mode = false,
 };
 
 #ifdef CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG
@@ -438,7 +429,6 @@ show_one(conservative_step, conservative_step);
 show_one(up_conservative_mode, up_conservative_mode);
 show_one(max_freq_blank, max_freq_blank);
 show_one(boost_mode, boost_mode);
-show_one(game_mode, game_mode);
 
 /**
  * update_sampling_rate - update sampling rate effective immediately if needed.
@@ -704,20 +694,6 @@ static ssize_t store_boost_mode(struct kobject *a, struct attribute *b,
 	return count;
 }
 
-static ssize_t store_game_mode(struct kobject *a, struct attribute *b,
-				  const char *buf, size_t count)
-{
-	unsigned int input;
-	int ret;
-	ret = sscanf(buf, "%u", &input);
-
-	if (ret != 1)
-		return -EINVAL;
-
-	dbs_tuners_ins.game_mode = input ? true : false;
-	return count;
-}
-
 static ssize_t store_ignore_nice_load(struct kobject *a, struct attribute *b,
 				      const char *buf, size_t count)
 {
@@ -785,7 +761,6 @@ define_one_global_rw(conservative_step);
 define_one_global_rw(up_conservative_mode);
 define_one_global_rw(max_freq_blank);
 define_one_global_rw(boost_mode);
-define_one_global_rw(game_mode);
 
 static int cpu_util[4];
 
@@ -817,7 +792,6 @@ static struct attribute *dbs_attributes[] = {
 	&conservative_step.attr,
 	&max_freq_blank.attr,
 	&boost_mode.attr,
-	&game_mode.attr,
 	NULL,
 };
 
@@ -969,25 +943,9 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		 * Condition 1: current freq is under 1.2GHz, apply step level to 1.2GHz
 		 * Condition 2: current freq is same or over 1.2GHz, increase to max freq.
 		 */
-
-		if (dbs_tuners_ins.game_mode) {
-			switch (policy->cur) {
-			case MICRO_FREQUENCY_MIDDLE_LEVEL_1 ... (MICRO_FREQUENCY_MIDDLE_LEVEL_2 - 1) :
-				dbs_tuners_ins.up_threshold = MICRO_FREQUENCY_MIDDLE_THRESHOLD_1;
-				break;
-			case MICRO_FREQUENCY_MIDDLE_LEVEL_2 ... (MICRO_FREQUENCY_MIDDLE_LEVEL_3 - 1) :
-				dbs_tuners_ins.up_threshold = MICRO_FREQUENCY_MIDDLE_THRESHOLD_2;
-				break;
-			case MICRO_FREQUENCY_MIDDLE_LEVEL_3 ... (MICRO_FREQUENCY_UP_STEP_LEVEL_B - 1) :
-				dbs_tuners_ins.up_threshold = MICRO_FREQUENCY_MIDDLE_THRESHOLD_3;
-				break;
-			}
-		}
-
 		if (max_load_freq > dbs_tuners_ins.up_threshold * policy->cur) {
 			dbs_freq_increase(policy, policy->cur < dbs_tuners_ins.up_step_level_b ?
 					dbs_tuners_ins.up_step_level_b : policy->max);
-			dbs_tuners_ins.up_threshold = MICRO_FREQUENCY_UP_THRESHOLD;
 
 			goto exit;
 		}

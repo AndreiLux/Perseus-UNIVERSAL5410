@@ -69,7 +69,9 @@
 #define MC_ASOC_RATE	(SNDRV_PCM_RATE_8000_192000)
 #define MC_ASOC_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | \
 			 SNDRV_PCM_FMTBIT_S20_3LE | \
-			 SNDRV_PCM_FMTBIT_S24_3LE)
+			 SNDRV_PCM_FMTBIT_S24_LE | \
+			 SNDRV_PCM_FMTBIT_S24_3LE | \
+			 SNDRV_PCM_FMTBIT_S32_LE)
 
 #define MC_ASOC_HWDEP_ID	"ymu831"
 
@@ -3738,7 +3740,10 @@ static void set_BIAS(
 		}
 
 	if (((path_info->asHp[0].dSrcOnOff & MCDRV_ASRC_DAC0_L_ON) != 0)
-	|| ((path_info->asHp[1].dSrcOnOff & MCDRV_ASRC_DAC0_R_ON) != 0)) {
+	|| ((path_info->asHp[1].dSrcOnOff & MCDRV_ASRC_DAC0_R_ON) != 0)
+	|| ((path_info->asAdc0[0].dSrcOnOff & MCDRV_ASRC_MIC4_ON) != 0)
+	|| ((path_info->asAdc0[1].dSrcOnOff & MCDRV_ASRC_MIC4_ON) != 0)
+	|| ((path_info->asAdc1[0].dSrcOnOff & MCDRV_ASRC_MIC4_ON) != 0)) {
 		reg_info.bRegType = MCDRV_REGTYPE_ANA;
 		reg_info.bAddress = 13;
 		_McDrv_Ctrl(MCDRV_READ_REG, (void *)&reg_info, NULL, 0);
@@ -3766,6 +3771,18 @@ static void set_BIAS(
 				(*platform_data->set_ext_micbias)(1);
 			} else {
 				(*platform_data->set_ext_micbias)(0);
+			}
+		}
+
+		if (platform_data->set_ext_sub_micbias != NULL) {
+			if ((path_info->asAdc0[0].dSrcOnOff&MCDRV_ASRC_MIC2_ON)
+			|| (path_info->asAdc0[1].dSrcOnOff&MCDRV_ASRC_MIC2_ON)
+			|| (path_info->asAdc1[0].dSrcOnOff&MCDRV_ASRC_MIC2_ON)
+			) {
+				;
+				(*platform_data->set_ext_sub_micbias)(1);
+			} else {
+				(*platform_data->set_ext_sub_micbias)(0);
 			}
 		}
 	}
@@ -4978,6 +4995,8 @@ static int mc_asoc_hw_params(
 	int	err	= 0;
 	int	id;
 	struct MCDRV_DIOPATH_INFO	sDioPathInfo;
+	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
+	int	preset_idx	= 0;
 
 	TRACE_FUNC();
 
@@ -5038,8 +5057,12 @@ static int mc_asoc_hw_params(
 	case SNDRV_PCM_FORMAT_S20_3LE:
 		port->bits[dir]	= MCDRV_BITSEL_20;
 		break;
+	case SNDRV_PCM_FORMAT_S24_LE:
 	case SNDRV_PCM_FORMAT_S24_3LE:
 		port->bits[dir]	= MCDRV_BITSEL_24;
+		break;
+	case SNDRV_PCM_FORMAT_S32_LE:
+		port->bits[dir]	= MCDRV_BITSEL_32;
 		break;
 	default:
 		return -EINVAL;
@@ -5099,16 +5122,14 @@ static int mc_asoc_hw_params(
 
 	port->rate	= rate;
 
+	if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0) {
+		err	= -EIO;
+		goto error;
+	}
+	preset_idx	= get_path_preset_idx(&mixer_ctl_info);
+
 	if ((rate == MCDRV_FS_96000)
 	|| (rate == MCDRV_FS_192000)) {
-		struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
-		int	preset_idx	= 0;
-
-		if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0) {
-			err	= -EIO;
-			goto error;
-		}
-		preset_idx	= get_path_preset_idx(&mixer_ctl_info);
 		if ((is_incall(preset_idx) != 0)
 		|| (is_incommunication(preset_idx) != 0)) {
 			err	= -EINVAL;
@@ -5143,6 +5164,8 @@ static int mc_asoc_hw_params(
 
 	port->stream |= (1 << dir);
 	mc_asoc_port_rate	= rate;
+	if (preset_idx	!= get_path_preset_idx(&mixer_ctl_info))
+		connect_path(codec);
 
 error:
 	mutex_unlock(&mc_asoc->mutex);

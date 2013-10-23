@@ -8,6 +8,7 @@
 */
 
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/types.h>
 #include <linux/io.h>
 #include <linux/delay.h>
@@ -97,8 +98,8 @@ void exynos5410_c2c_cfg_gpio(enum c2c_buswidth rx_width,
 {
 	int i;
 	s5p_gpio_drvstr_t lv1 = S5P_GPIO_DRVSTR_LV1;
-	s5p_gpio_drvstr_t lv3 = S5P_GPIO_DRVSTR_LV3;
-	s5p_gpio_pd_cfg_t pd_cfg = S5P_GPIO_PD_INPUT;
+	s5p_gpio_drvstr_t lv4 = S5P_GPIO_DRVSTR_LV4;
+	s5p_gpio_pd_cfg_t pd_cfg = S5P_GPIO_PD_PREV_STATE;
 	s5p_gpio_pd_pull_t pd_pull = S5P_GPIO_PD_DOWN_ENABLE;
 
 	/* Set GPIO for C2C Rx */
@@ -127,30 +128,39 @@ void exynos5410_c2c_cfg_gpio(enum c2c_buswidth rx_width,
 
 	/* Set GPIO for C2C Tx */
 	s3c_gpio_cfgrange_nopull(EXYNOS5410_GPV2(0), 8, C2C_SFN);
-	for (i = 0; i < 8; i++)
-		s5p_gpio_set_drvstr(EXYNOS5410_GPV2(i), lv3);
+	for (i = 0; i < 8; i++) {
+		s5p_gpio_set_drvstr(EXYNOS5410_GPV2(i), lv4);
+		s5p_gpio_set_pd_cfg(EXYNOS5410_GPV2(i), pd_cfg);
+	}
 
 	if (tx_width == C2C_BUSWIDTH_16) {
 		s3c_gpio_cfgrange_nopull(EXYNOS5410_GPV3(0), 8, C2C_SFN);
-		for (i = 0; i < 8; i++)
-			s5p_gpio_set_drvstr(EXYNOS5410_GPV3(i), lv3);
+		for (i = 0; i < 8; i++) {
+			s5p_gpio_set_drvstr(EXYNOS5410_GPV3(i), lv4);
+			s5p_gpio_set_pd_cfg(EXYNOS5410_GPV3(i), pd_cfg);
+		}
 	} else if (tx_width == C2C_BUSWIDTH_10) {
 		s3c_gpio_cfgrange_nopull(EXYNOS5410_GPV3(0), 2, C2C_SFN);
-		for (i = 0; i < 2; i++)
-			s5p_gpio_set_drvstr(EXYNOS5410_GPV3(i), lv3);
+		for (i = 0; i < 2; i++) {
+			s5p_gpio_set_drvstr(EXYNOS5410_GPV3(i), lv4);
+			s5p_gpio_set_pd_cfg(EXYNOS5410_GPV3(i), pd_cfg);
+		}
 	}
 
 	/* Set GPIO for WakeReqOut/In */
 	s3c_gpio_cfgrange_nopull(EXYNOS5410_GPV4(0), 2, C2C_SFN);
 	s5p_gpio_set_pd_cfg(EXYNOS5410_GPV4(0), pd_cfg);
 	s5p_gpio_set_pd_pull(EXYNOS5410_GPV4(0), pd_pull);
+	s5p_gpio_set_pd_cfg(EXYNOS5410_GPV4(1), pd_cfg);
+	s5p_gpio_set_pd_pull(EXYNOS5410_GPV4(1), pd_pull);
 
-	writel(0x5, etc8drv_addr);
+	writel(0xf, etc8drv_addr);
 }
 
 void exynos_c2c_cfg_gpio(enum c2c_buswidth rx_width, enum c2c_buswidth tx_width)
 {
 	void __iomem *etc8drv_addr;
+
 	etc8drv_addr = ioremap(EXYNOS5_PA_ETC8, SZ_64);
 	etc8drv_addr += 0xC;
 
@@ -164,6 +174,7 @@ void exynos_c2c_cfg_gpio(enum c2c_buswidth rx_width, enum c2c_buswidth tx_width)
 
 	iounmap(etc8drv_addr);
 }
+EXPORT_SYMBOL(exynos_c2c_cfg_gpio);
 
 #ifdef CONFIG_C2C_IPC_ONLY
 struct exynos_c2c_platdata smdk5410_c2c_pdata = {
@@ -202,6 +213,18 @@ struct exynos_c2c_platdata smdk5410_c2c_pdata = {
 	.c2c_sysreg = NULL,
 };
 #endif
+
+enum c2c_buswidth exynos_c2c_rx_width(void)
+{
+	return smdk5410_c2c_pdata.rx_width;
+}
+EXPORT_SYMBOL(exynos_c2c_rx_width);
+
+enum c2c_buswidth exynos_c2c_tx_width(void)
+{
+	return smdk5410_c2c_pdata.tx_width;
+}
+EXPORT_SYMBOL(exynos_c2c_tx_width);
 
 static struct platform_device *smdk5410_modem_if_devices[] __initdata = {
 #ifdef CONFIG_EXYNOS_C2C

@@ -1963,6 +1963,14 @@ static ssize_t cmd_store(struct device *dev, struct device_attribute *attr,
 	struct factory_data *data = f54->factory_data;
 	struct synaptics_rmi4_data *rmi4_data = f54->rmi4_data;
 
+#ifdef TSP_PATTERN_TRACKING_METHOD
+	if (rmi4_data->pattern_data.is_working) {
+		dev_err(&rmi4_data->i2c_client->dev, "%s: Skip cmd during pattern tracking workaround :%s\n",
+			 __func__, buf);
+		return count;
+	}
+#endif
+
 	if (data->cmd_is_running == true) {
 		dev_err(&rmi4_data->i2c_client->dev, "%s: Still servicing previous command. Skip cmd :%s\n",
 			 __func__, buf);
@@ -1989,6 +1997,23 @@ static ssize_t cmd_store(struct device *dev, struct device_attribute *attr,
 		memcpy(buffer, buf, pos - buf);
 	else
 		memcpy(buffer, buf, length);
+
+#ifdef SECURE_TSP
+	if (rmi4_data->secure_mode_status && (strcmp(buffer, "secure_mode"))) {
+		dev_err(&rmi4_data->i2c_client->dev, "%s: Secure mode enabled. Skip cmd :%s\n",
+			 __func__, buf);
+		set_default_result(data);
+		sprintf(data->cmd_buff, "%s", tostring(NA));
+		set_cmd_result(data, data->cmd_buff, strlen(data->cmd_buff));
+
+		mutex_lock(&data->cmd_lock);
+		data->cmd_is_running = false;
+		mutex_unlock(&data->cmd_lock);
+
+		data->cmd_state = CMD_STATUS_WAITING;
+		return count;
+	}
+#endif
 
 	/* find command */
 	list_for_each_entry(ft_cmd_ptr, &data->cmd_list_head, list) {
@@ -2104,6 +2129,37 @@ static ssize_t cmd_list_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n", buffer);
 }
 
+/* Caution : Below function run the force calibration for the mutual touch.
+ * So it should be used for the specific case.
+ */
+int synaptics_rmi4_force_calibration(void)
+{
+	int retval;
+	unsigned char command;
+	struct synaptics_rmi4_data *rmi4_data;
+
+	if (!f54)
+		return -ENOMEM;
+
+	if (f54->status == STATUS_BUSY)
+		return -EBUSY;
+
+	rmi4_data = f54->rmi4_data;
+
+	command = (unsigned char)COMMAND_FORCE_CAL;
+
+	retval = f54->fn_ptr->write(rmi4_data,
+			f54->command_base_addr,
+			&command,
+			sizeof(command));
+
+	dev_err(&rmi4_data->i2c_client->dev, "%s: Write force cal command %s\n",
+				__func__, (retval < 0) ? "Fail" : "Sucess");
+
+	return retval;
+}
+EXPORT_SYMBOL(synaptics_rmi4_force_calibration);
+
 /* TODO: Below function is added to check that firmware update is needed or not.
  * During development period, we need to support test firmware and various H/W
  * type such as A1/B0.... So Below conditions are very compex, maybe we need to
@@ -2125,6 +2181,11 @@ static bool synaptics_skip_firmware_update(struct synaptics_rmi4_data *rmi4_data
 		rmi4_data->fw_version_of_bin, rmi4_data->fw_version_of_ic);
 	dev_info(&rmi4_data->i2c_client->dev, "%s: [Panel revision, prog bit] [0x%02X, 0x%02X]\n",
 		__func__, rmi4_data->panel_revision, rmi4_data->flash_prog_mode);
+
+#ifdef CONFIG_MACH_HA
+	dev_info(&rmi4_data->i2c_client->dev, "%s: Temporary, HA always update firmware when device boot\n",	__func__);
+	return false;
+#endif
 
 	if (rmi4_data->flash_prog_mode) {
 		dev_err(&rmi4_data->i2c_client->dev, "%s: Force firmware update : Flash prog bit is setted fw\n",
@@ -2148,6 +2209,13 @@ static bool synaptics_skip_firmware_update(struct synaptics_rmi4_data *rmi4_data
 		return true;
 	}
 #endif
+
+	/* Several locale departs are useing too old version and the version ic and pcb is so complicated.
+	   blocked update routine to use old version  */
+	if ( rmi4_data->panel_revision != 0x08 )  {
+		dev_info(&rmi4_data->i2c_client->dev, "%s: Do not update F/W for OLD H/W\n",	__func__);
+		return true;
+	}
 
 #if defined(CONFIG_TARGET_LOCALE_JPN)
 	if (system_rev == 9) {
@@ -2459,11 +2527,13 @@ static void get_config_ver(void)
 {
 	struct factory_data *data = f54->factory_data;
 	struct synaptics_rmi4_data *rmi4_data = f54->rmi4_data;
+	const struct synaptics_rmi4_platform_data *pdata = rmi4_data->board;
 
 	set_default_result(data);
-	sprintf(data->cmd_buff, "%s_SY_%02d%02d",
+	sprintf(data->cmd_buff, "%s_SY_%02d%02d%s",
 	    SYNAPTICS_DEVICE_NAME, rmi4_data->fw_release_date_of_ic >> 8,
-	    rmi4_data->fw_release_date_of_ic & 0x00FF);
+	    rmi4_data->fw_release_date_of_ic & 0x00FF,
+		pdata->get_ddi_type ? rmi4_data->ddi_type ? "_M" : "_L" : "");
 	set_cmd_result(data, data->cmd_buff, strlen(data->cmd_buff));
 
 	data->cmd_state = CMD_STATUS_OK;
@@ -3095,8 +3165,16 @@ static void hover_no_sleep_enable(void)
 }
 
 #ifdef CONFIG_GLOVE_TOUCH
+
+/* Below bit represent like below descriptions.
+ * bit[0] : represent enable or disable glove mode(high sensitivity mode)
+ * bit[1] : represent enable or disable cover mode.
+ *		(cover is on lcd, change sensitivity to prevent unintended touch)
+ * bit[2] : represent enable or disable fast glove mode.
+ *		(change glove mode entering condition to be faster)
+ */
 #define GLOVE_MODE_EN (1 << 0)
-#define CLEAR_COVER_EN (1 << 1)
+#define CLOSED_COVER_EN (1 << 1)
 #define FAST_GLOVE_MODE_EN (1 << 2)
 
 static void glove_mode(void)
@@ -3106,7 +3184,7 @@ static void glove_mode(void)
 
 	set_default_result(data);
 
-	if (rmi4_data->glove_mode_enables & CLEAR_COVER_EN) {
+	if (rmi4_data->glove_mode_enables & CLOSED_COVER_EN) {
 		snprintf(data->cmd_buff, sizeof(data->cmd_buff), "OK");
 		data->cmd_state = CMD_STATUS_OK;
 		dev_info(&rmi4_data->i2c_client->dev,
@@ -3167,8 +3245,7 @@ static void fast_glove_mode(void)
 		if (data->cmd_param[0]) {
 			rmi4_data->glove_mode_enables |= FAST_GLOVE_MODE_EN | GLOVE_MODE_EN;
 			rmi4_data->fast_glove_state = true;
-		}
-		else {
+		} else {
 			rmi4_data->glove_mode_enables &= ~(FAST_GLOVE_MODE_EN);
 			rmi4_data->fast_glove_state = false;
 		}
@@ -3230,7 +3307,7 @@ static void clear_cover_mode(void)
 		/* Sync user setting value when wakeup with flip cover opened */
 		if ((0x02 == rmi4_data->glove_mode_enables) ||
 			(0x06 == rmi4_data->glove_mode_enables)) {
-			rmi4_data->glove_mode_enables &= ~(CLEAR_COVER_EN);
+			rmi4_data->glove_mode_enables &= ~(CLOSED_COVER_EN);
 
 			if (rmi4_data->fast_glove_state)
 				rmi4_data->glove_mode_enables |= GLOVE_MODE_EN;
@@ -3272,7 +3349,14 @@ static void secure_mode(void)
 	struct factory_data *data = f54->factory_data;
 	struct synaptics_rmi4_data *rmi4_data = f54->rmi4_data;
 
-	secure_mode_status = data->cmd_param[0];
+	if (rmi4_data->secure_mode_status == data->cmd_param[0]) {
+		set_default_result(data);
+		snprintf(data->cmd_buff, sizeof(data->cmd_buff), "OK");
+		data->cmd_state = CMD_STATUS_OK;
+		goto out;
+	}
+
+	rmi4_data->secure_mode_status = data->cmd_param[0];
 
 	set_default_result(data);
 
@@ -3300,6 +3384,14 @@ static void secure_mode(void)
 		data->cmd_state = CMD_STATUS_OK;
 	}
 
+	if (rmi4_data->secure_mode_status) {
+		disable_irq(rmi4_data->i2c_client->irq);
+		dev_info(&rmi4_data->i2c_client->dev, "synaptics_rmi4_release_all_finger\n");
+		synaptics_rmi4_release_all_finger(rmi4_data);
+	} else
+		enable_irq(rmi4_data->i2c_client->irq);
+
+out:
 	set_cmd_result(data, data->cmd_buff, strlen(data->cmd_buff));
 
 	mutex_lock(&data->cmd_lock);

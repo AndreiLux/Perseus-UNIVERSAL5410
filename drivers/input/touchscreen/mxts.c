@@ -1343,9 +1343,20 @@ static void mxt_handle_init_data(struct mxt_data *data)
 			dev_info(&data->client->dev,"HW_REV 0.2 and TSP_REV 0.1 keep current state!");
 		}
 
-	}	else if(system_rev == 3) {	/*Rev 0.3 for TSP Ver 0.3 */
-		dev_info(&data->client->dev,"HW_REV 0.3 and TSP_REV 0.3 change config!");
-		mxt_write_object(data, MXT_TOUCH_KEYARRAY_T15, MXT_KEYARRY_XORIGIN, 0);
+	} else if(system_rev == 3) {	/* Check TSP Ver 0.3 and Ver 0.4 for HW Rev 0.3. */
+		mxt_read_all_diagnostic_data(data, MXT_DIAG_REFERENCE_MODE);
+
+		ref_x26 = data->fdata->reference[26*52 + 51];
+		ref_x27 = data->fdata->reference[27*52 + 51];
+
+		dev_info(&data->client->dev,"HW_REV 0.3, X27_ref=[%d],X26_ref=[%d]", ref_x27, ref_x26);
+
+		if(ref_x26 < 600 && ref_x27 < 600){
+			mxt_write_object(data, MXT_TOUCH_KEYARRAY_T15, MXT_KEYARRY_XORIGIN, 0);
+			dev_info(&data->client->dev,"HW_REV 0.3 and TSP_REV 0.3 change X-origin!");
+		} else {
+			dev_info(&data->client->dev,"HW_REV 0.3 and TSP_REV 0.4 keep current state!");
+		}
 	}
 #else
 	dev_info(&data->client->dev,"Not support TSP_SEC_FACTORY!");

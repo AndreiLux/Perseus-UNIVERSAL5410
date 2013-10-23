@@ -853,9 +853,11 @@ static inline u32 wincon(u32 bits_per_pixel, u32 transp_length, u32 red_length)
 	return data;
 }
 
-static inline u32 blendeq(enum s3c_fb_blending blending, u8 transp_length)
+static inline u32 blendeq(enum s3c_fb_blending blending, u8 transp_length,
+	int plane_alpha)
 {
 	u8 a, b;
+	int is_plane_alpha = (plane_alpha < 255 && plane_alpha > 0) ? 1 : 0;
 
 	if (transp_length == 1 && blending == S3C_FB_BLENDING_PREMULT)
 		blending = S3C_FB_BLENDING_COVERAGE;
@@ -867,8 +869,13 @@ static inline u32 blendeq(enum s3c_fb_blending blending, u8 transp_length)
 		break;
 
 	case S3C_FB_BLENDING_PREMULT:
-		a = BLENDEQ_COEF_ONE;
-		b = BLENDEQ_COEF_ONE_MINUS_ALPHA_A;
+		if (!is_plane_alpha) {
+			a = BLENDEQ_COEF_ONE;
+			b = BLENDEQ_COEF_ONE_MINUS_ALPHA_A;
+		} else {
+			a = BLENDEQ_COEF_ALPHA0;
+			b = BLENDEQ_COEF_ONE_MINUS_ALPHA_A;
+		}
 		break;
 
 	case S3C_FB_BLENDING_COVERAGE:
@@ -2052,7 +2059,10 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 	regs->vidosd_b[win_no] = vidosd_b(win_config->x, win_config->y,
 			win_config->w, win_config->h);
 
-	if (win->fbinfo->var.transp.length == 1 &&
+	if ((win_config->plane_alpha > 0) && (win_config->plane_alpha < 0xFF)) {
+		alpha0 = win_config->plane_alpha;
+		alpha1 = 0;
+	} else if (win->fbinfo->var.transp.length == 1 &&
 			win_config->blending == S3C_FB_BLENDING_NONE) {
 		alpha0 = 0xff;
 		alpha1 = 0xff;
@@ -2082,9 +2092,20 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 	regs->wincon[win_no] = wincon(win->fbinfo->var.bits_per_pixel,
 			win->fbinfo->var.transp.length,
 			win->fbinfo->var.red.length);
-	if (win_no)
+	if (win_no) {
+		if ((win_config->plane_alpha > 0) && (win_config->plane_alpha < 0xFF)) {
+			if (win->fbinfo->var.transp.length) {
+				if (win_config->blending != S3C_FB_BLENDING_NONE)
+					regs->wincon[win_no] |= WINCON1_ALPHA_MUL;
+			} else {
+				regs->wincon[win_no] &= (~WINCON1_ALPHA_SEL);
+				if (win_config->blending == S3C_FB_BLENDING_PREMULT)
+					win_config->blending = S3C_FB_BLENDING_COVERAGE;
+			}
+		}
 		regs->blendeq[win_no - 1] = blendeq(win_config->blending,
-				win->fbinfo->var.transp.length);
+				win->fbinfo->var.transp.length, win_config->plane_alpha);
+	}
 
 	return 0;
 
@@ -4015,9 +4036,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	/* MDNIE setting */
 	s3c_mdnie_hw_init();
 	s3c_mdnie_set_size();
-#ifdef CONFIG_MACH_V1
-	mdnie_update(g_mdnie, 1);
-#endif
+
 	/* FIMD , IELCD Enable video out */
 	s3c_ielcd_display_on();
 	s3c_fimd1_display_on();
@@ -4389,7 +4408,6 @@ static int s3c_fb_enable(struct s3c_fb *sfb)
 	s3c_ielcd_setup();
 	/* MDNIE setting */
 	s3c_mdnie_set_size();
-	mdnie_update(g_mdnie, 1);
 
 	/* FIMD , IELCD Enable video out */
 	s3c_ielcd_display_on();
@@ -4577,7 +4595,6 @@ static int s3c_fb_resume(struct device *dev)
 	s3c_ielcd_setup();
 	/* MDNIE setting */
 	s3c_mdnie_set_size();
-	mdnie_update(g_mdnie, 1);
 
 	/* FIMD , IELCD Enable video out */
 	s3c_ielcd_display_on();

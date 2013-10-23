@@ -3,47 +3,47 @@
 
 #include "mdnie.h"
 
-#if defined (CONFIG_S5P_MDNIE_PWM)
-#define MDNIE_PWM_REG_CNT       10
-#define MDNIE_PWM_CABC_REG_CNT  26
+#if defined(CONFIG_S5P_MDNIE_PWM)
+#define MDNIE_PWM_REG_CNT		10
+#define MDNIE_PWM_CABC_REG_CNT	26
 
 static unsigned short mdnie_pwm[MDNIE_PWM_REG_CNT] = {
-    0x0000, 0x0001,
-    0x00f8, 0x0011,
-    0x00f9, 0x0000,
-    0x00ff, 0x0000,
-    END_SEQ, 0x0000,
+	0x0000, 0x0001,
+	0x00f8, 0x0011,
+	0x00f9, 0x0000,
+	0x00ff, 0x0000,
+	END_SEQ, 0x0000,
 };
 
 static unsigned short mdnie_pwm_cabc[MDNIE_PWM_CABC_REG_CNT] = {
-    0x0000, 0x0001,
-    0x00bb, 0x0000,
-    0x00bc, 0x0000,
-    0x00bd, 0x0000,
-    0x00be, 0x0000,
-    0x00bf, 000000,
-    0x00c0, 0x0000,
-    0x00c1, 0x0000,
-    0x00c2, 0x0000,
-    0x00c3, 0x0000,
-    0x00f8, 0x0010,
-    0x00ff, 0x0000,
-    END_SEQ, 0x0000,
+	0x0000, 0x0001,
+	0x00bb, 0x0000,
+	0x00bc, 0x0000,
+	0x00bd, 0x0000,
+	0x00be, 0x0000,
+	0x00bf, 000000,
+	0x00c0, 0x0000,
+	0x00c1, 0x0000,
+	0x00c2, 0x0000,
+	0x00c3, 0x0000,
+	0x00f8, 0x0010,
+	0x00ff, 0x0000,
+	END_SEQ, 0x0000,
 };
 
 static unsigned short dft_cabc_plut[9] = {
-    0x651,
-    0x6b7,
-    0x5ff,
-    0x799,
-    0x651,
-    0x614,
-    0x5ad,
-    0x570,
-    0x614,
+	0x651,
+	0x6b7,
+	0x5ff,
+	0x799,
+	0x651,
+	0x614,
+	0x5ad,
+	0x570,
+	0x614,
 };
-
 #endif
+
 static unsigned short tune_camera[] = {
 	/*start JA camera*/
 	0x0000, 0x0000, /*BANK 0*/
@@ -132,10 +132,10 @@ static unsigned short tune_auto_ui[] = {
 	0x0008, 0x0020, /*SCR2 CC1 | CS2 DE1 | 0*/
 	0x0009, 0x0000, /*MCM off*/
 	0x000a, 0x0000, /*UC off*/
-	0x00c0, 0x1010, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1804, //CS weight grayTH
+	0x00c0, 0x1010, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1804, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -169,10 +169,10 @@ static unsigned short tune_auto_video[] = {
 	0x00b7, 0x0030, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x1010, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1404, //CS weight grayTH
+	0x00c0, 0x1010, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1404, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -206,10 +206,10 @@ static unsigned short tune_auto_gallery[] = {
 	0x00b7, 0x0050, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x1010, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1404, //CS weight grayTH
+	0x00c0, 0x1010, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1404, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -408,10 +408,10 @@ static unsigned short tune_standard_ui[] = {
 	0x00b7, 0x0060, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x1010, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1804, //CS weight grayTH
+	0x00c0, 0x1010, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1804, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -445,10 +445,10 @@ static unsigned short tune_standard_video[] = {
 	0x00b7, 0x0060, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x0d0d, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1404, //CS weight grayTH
+	0x00c0, 0x0d0d, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1404, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -482,10 +482,10 @@ static unsigned short tune_standard_gallery[] = {
 	0x00b7, 0x0060, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x0d0d, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1404, //CS weight grayTH
+	0x00c0, 0x0d0d, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1404, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -827,8 +827,7 @@ static unsigned short tune_movie_browser[] = {
 	END_SEQ, 0x0000,
 };
 
-#if defined (CONFIG_S5P_MDNIE_PWM)
-
+#if defined(CONFIG_S5P_MDNIE_PWM)
 static unsigned short tune_cabc_ebook[] = {
 	/*start JA ebook*/
 	0x0000, 0x0000, /*BANK 0*/
@@ -869,10 +868,10 @@ static unsigned short tune_cabc_auto_ui[] = {
 	0x0008, 0x0820, /*SCR2 CC1 | CS2 DE1 | 0*/
 	0x0009, 0x0000, /*MCM off*/
 	0x000a, 0x0000, /*UC off*/
-	0x00c0, 0x1010, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1804, //CS weight grayTH
+	0x00c0, 0x1010, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1804, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -906,10 +905,10 @@ static unsigned short tune_cabc_auto_video[] = {
 	0x00b7, 0x0030, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x1010, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1404, //CS weight grayTH
+	0x00c0, 0x1010, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1404, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -943,10 +942,10 @@ static unsigned short tune_cabc_auto_gallery[] = {
 	0x00b7, 0x0050, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x1010, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1404, //CS weight grayTH
+	0x00c0, 0x1010, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1404, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -1145,10 +1144,10 @@ static unsigned short tune_cabc_standard_ui[] = {
 	0x00b7, 0x0060, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x1010, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1804, //CS weight grayTH
+	0x00c0, 0x1010, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1804, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -1182,10 +1181,10 @@ static unsigned short tune_cabc_standard_video[] = {
 	0x00b7, 0x0060, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x0d0d, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1404, //CS weight grayTH
+	0x00c0, 0x0d0d, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1404, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -1219,10 +1218,10 @@ static unsigned short tune_cabc_standard_gallery[] = {
 	0x00b7, 0x0060, /*DE nb*/
 	0x00b8, 0x1000, /*DE max ratio*/
 	0x00b9, 0x0100, /*DE min ratio*/
-	0x00c0, 0x0d0d, //CS hg ry
-	0x00c1, 0x1010, //CS hg gc
-	0x00c2, 0x1010, //CS hg bm
-	0x00c3, 0x1404, //CS weight grayTH
+	0x00c0, 0x0d0d, /* CS hg ry */
+	0x00c1, 0x1010, /* CS hg gc */
+	0x00c2, 0x1010, /* CS hg bm */
+	0x00c3, 0x1404, /* CS weight grayTH */
 	0x0000, 0x0001, /*BANK 1*/
 	0x0071, 0xff00, /*SCR RrCr*/
 	0x0072, 0x00ff, /*SCR RgCg*/
@@ -1564,6 +1563,7 @@ static unsigned short tune_cabc_movie_browser[] = {
 	END_SEQ, 0x0000,
 };
 #endif
+
 struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 	{
 		{
@@ -1577,6 +1577,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"dyn_vt",		tune_dynamic_vt},
 			{"dyn_browser",	tune_dynamic_browser},
 			{"dyn_ebook",		tune_ebook},
+			{"email",		tune_camera},
 		}, {
 			{"std_ui",		tune_standard_ui},
 			{"std_video",	tune_standard_video},
@@ -1588,8 +1589,9 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"std_vt",		tune_standard_vt},
 			{"std_browser",	tune_standard_browser},
 			{"std_ebook",		tune_ebook},
-		}, 
-#if !defined (CONFIG_S5P_MDNIE_PWM)		
+			{"email",		tune_camera},
+		},
+#if !defined(CONFIG_S5P_MDNIE_PWM)
 		{
 			{"nat_ui",		tune_natural_ui},
 			{"nat_video",	tune_natural_video},
@@ -1601,9 +1603,10 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"nat_vt",		tune_natural_vt},
 			{"nat_browser",	tune_natural_browser},
 			{"nat_ebook",		tune_ebook},
-		}, 
+			{"email",		tune_camera},
+		},
 #endif
-        {
+	{
 			{"mov_ui",		tune_movie_ui},
 			{"mov_video",		tune_movie_video},
 			{"mov_video",		tune_movie_video},
@@ -1614,6 +1617,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"mov_vt",		tune_movie_vt},
 			{"mov_browser",	tune_movie_browser},
 			{"mov_ebook",		tune_ebook},
+			{"email",		tune_camera},
 		}, {
 			{"auto_ui",		tune_auto_ui},
 			{"auto_video",		tune_auto_video},
@@ -1625,10 +1629,11 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"auto_vt",		tune_auto_vt},
 			{"auto_browser",	tune_auto_browser},
 			{"auto_ebook",		tune_ebook},
+			{"email",		tune_camera},
 		},
 	},
-#if defined (CONFIG_S5P_MDNIE_PWM)
-    {
+#if defined(CONFIG_S5P_MDNIE_PWM)
+	{
 		{
 			{"cabc_dyn_ui",		tune_cabc_dynamic_ui},
 			{"cabc_dyn_video",	tune_cabc_dynamic_video},
@@ -1640,6 +1645,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"cabc_dyn_vt",		tune_cabc_dynamic_vt},
 			{"cabc_dyn_browser",	tune_cabc_dynamic_browser},
 			{"cabc_dyn_ebook",		tune_cabc_ebook},
+			{"email",		tune_camera},
 		}, {
 			{"cabc_std_ui",		tune_cabc_standard_ui},
 			{"cabc_std_video",	tune_cabc_standard_video},
@@ -1651,8 +1657,9 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"cabc_std_vt",		tune_cabc_standard_vt},
 			{"cabc_std_browser",	tune_cabc_standard_browser},
 			{"cabc_std_ebook",		tune_cabc_ebook},
-		}, 
-#if !defined (CONFIG_S5P_MDNIE_PWM)		
+			{"email",		tune_camera},
+		},
+#if !defined(CONFIG_S5P_MDNIE_PWM)
 		{
 			{"cabc_nat_ui",		tune_cabc_natural_ui},
 			{"cabc_nat_video",	tune_cabc_natural_video},
@@ -1664,9 +1671,10 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"cabc_nat_vt",		tune_cabc_natural_vt},
 			{"cabc_nat_browser",	tune_cabc_natural_browser},
 			{"cabc_nat_ebook",		tune_cabc_ebook},
-		}, 
+			{"email",		tune_camera},
+		},
 #endif
-        {
+	{
 			{"cabc_mov_ui",		tune_cabc_movie_ui},
 			{"cabc_mov_video",		tune_cabc_movie_video},
 			{"cabc_mov_video",		tune_cabc_movie_video},
@@ -1677,6 +1685,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"cabc_mov_vt",		tune_cabc_movie_vt},
 			{"cabc_mov_browser",	tune_cabc_movie_browser},
 			{"cabc_mov_ebook",		tune_cabc_ebook},
+			{"email",		tune_camera},
 		}, {
 			{"cabc_auto_ui",		tune_cabc_auto_ui},
 			{"cabc_auto_video",		tune_cabc_auto_video},
@@ -1688,6 +1697,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"cabc_auto_vt",		tune_cabc_auto_vt},
 			{"cabc_auto_browser",	tune_cabc_auto_browser},
 			{"cabc_auto_ebook",		tune_cabc_ebook},
+			{"email",		tune_camera},
 		},
 	}
 #endif

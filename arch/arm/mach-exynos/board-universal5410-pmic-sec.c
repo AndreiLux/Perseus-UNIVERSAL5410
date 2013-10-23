@@ -873,6 +873,13 @@ static int __init sec_pmic_reinit(void)
 #endif
 		s2mps11_opmode_data[S2MPS11_BUCK5V123].mode = SEC_OPMODE_NORMAL;
 
+#ifdef CONFIG_MACH_HA
+	if (system_rev > 0) {
+		s2m_ldo38_data.constraints.always_on = 1;
+		s2m_ldo38_data.constraints.boot_on = 1;
+	}
+#endif
+
 	return 0;
 }
 core_initcall(sec_pmic_reinit);

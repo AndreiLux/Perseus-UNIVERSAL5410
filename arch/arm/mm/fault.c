@@ -336,9 +336,6 @@ retry:
 			/* Clear FAULT_FLAG_ALLOW_RETRY to avoid any risk
 			* of starvation. */
 			flags &= ~FAULT_FLAG_ALLOW_RETRY;
-#ifdef CONFIG_ZSWAP
-			flags |= FAULT_FLAG_TRIED;
-#endif
 			goto retry;
 		}
 	}

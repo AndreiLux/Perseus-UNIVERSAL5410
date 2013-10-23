@@ -120,8 +120,10 @@ static void exynos_dwmci_set_io_timing(void *data, unsigned char timing)
 #if defined(CONFIG_MACH_V1)
 		if (system_rev == 1)
 			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(160);
-		else if (system_rev >= 2)
+		else if (system_rev == 2)
 			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(70);
+		else if (system_rev >= 3)
+			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(120);
 #elif defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT)
 		if(system_rev == 4)
 			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(140);

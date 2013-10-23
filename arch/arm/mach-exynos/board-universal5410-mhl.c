@@ -408,7 +408,7 @@ int __init exynos5_setup_mhl_i2cport(void)
 		universal5410_mhl_device[0] = &s3c_device_i2c15_new;
 	}
 #elif defined(CONFIG_MACH_V1)
-#if defined(CONFIG_V1_3G_REV00)
+#if defined(CONFIG_V1_3G_REV00) || defined(CONFIG_V1_3G_REV03)
 	if (system_rev > 02) { 
 		exynos5_hs_i2c0_set_platdata(&hs_i2c0_data);
 		universal5410_mhl_device[0] = &exynos5_device_hs_i2c0;

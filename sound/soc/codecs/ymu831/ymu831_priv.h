@@ -272,6 +272,7 @@ struct mc_asoc_jack {
 
 struct mc_asoc_platform_data {
 	void	(*set_ext_micbias)(int en);
+	void	(*set_ext_sub_micbias)(int en);
 	void	(*set_codec_ldod)(int status);
 };
 

@@ -462,8 +462,10 @@ int wait_dev_pwr_stat(const char *name, enum pwr_stat status)
 
 	if (spin < DEV_POWER_WAIT_SPIN)
 		pr_info(" done\n");
-	else
+	else {
 		subsystem_restart(EXTERNAL_MODEM);
+		return -ETIMEDOUT;
+	}
 	return 0;
 }
 
@@ -501,13 +503,16 @@ int set_hsic_lpa_states(int states)
 {
 	/* if modem need to check survive, get status in variable */
 	int val = 1;
+	int ret = 0;
 
 	/* set state for LPA enter */
 	if (val) {
 		switch (states) {
 		case STATE_HSIC_LPA_ENTER:
 			set_host_stat("mdm_hsic_pm0", POWER_OFF);
-			wait_dev_pwr_stat("mdm_hsic_pm0", POWER_OFF);
+			ret = wait_dev_pwr_stat("mdm_hsic_pm0", POWER_OFF);
+			if (ret)
+				return ret;
 			pr_info("set hsic lpa enter\n");
 			break;
 		case STATE_HSIC_LPA_WAKE:

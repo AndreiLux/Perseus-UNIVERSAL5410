@@ -20,12 +20,13 @@ obj-$(CONFIG_LCD_MIPI_S6E8AA0)	+= s6e8aa0_mipi_lcd.o
 obj-$(CONFIG_LCD_LMS501KF03)       += lms501kf03.o
 obj-$(CONFIG_LCD_MIPI_AMS480GYXX)	+= ams480gyxx_mipi_lcd.o
 obj-$(CONFIG_LCD_MIPI_ER63311)		+= eR63311_mipi_lcd.o
-obj-$(CONFIG_LCD_MIPI_S6E8FA0)		+= s6e8fa0_mipi_lcd.o smart_dimming_s6e8fa0.o \
-									     s6e8fa0_6P_mipi_lcd.o smart_dimming_s6e8fa0_6P.o \
-									     s6e8fa0_G_mipi_lcd.o smart_dimming_s6e8fa0_G.o \
-									     s6e8fa0_I_mipi_lcd.o \
-									     ea8062_mipi_lcd.o
-obj-$(CONFIG_LCD_MIPI_S6E3FA0)		+= s6e3fa0_mipi_lcd.o
+obj-$(CONFIG_LCD_MIPI_S6E8FA0)		+= s6e8fa0_mipi_lcd.o \
+					s6e8fa0_6P_mipi_lcd.o \
+					s6e8fa0_G_mipi_lcd.o \
+					s6e8fa0_I_mipi_lcd.o \
+					s6e8fa0_J_mipi_lcd.o \
+					ea8062_mipi_lcd.o dynamic_aid.o
+obj-$(CONFIG_LCD_MIPI_S6E3FA0)		+= s6e3fa0_mipi_lcd.o dynamic_aid.o
 obj-$(CONFIG_BACKLIGHT_CLASS_DEVICE) += backlight.o
 obj-$(CONFIG_BACKLIGHT_ATMEL_PWM)    += atmel-pwm-bl.o
 obj-$(CONFIG_BACKLIGHT_EP93XX)	+= ep93xx_bl.o

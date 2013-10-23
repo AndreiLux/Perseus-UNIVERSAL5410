@@ -72,6 +72,7 @@ struct s3c_fb_win_config {
 			enum s3c_fb_pixel_format	format;
 			enum s3c_fb_blending		blending;
 			int				fence_fd;
+			int				plane_alpha;
 		};
 	};
 

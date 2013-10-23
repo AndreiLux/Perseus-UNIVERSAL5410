@@ -17,6 +17,7 @@
 
 #include <mach/map.h>
 #include <mach/exynos5-audio.h>
+#include <mach/regs-pmu.h>
 
 
 static struct clk *mclk_clkout;
@@ -89,6 +90,9 @@ void exynos5_audio_set_mclk(bool enable, bool forced)
 	if (forced) {
 		mclk_usecount = 0;
 		clk_disable(mclk_clkout);
+
+		pr_info("%s: mclk forced disable\n", __func__);
+		pr_info("%s: %x\n", __func__, readl(EXYNOS_PMU_DEBUG));
 		return;
 	}
 
@@ -116,6 +120,8 @@ void exynos5_audio_set_mclk(bool enable, bool forced)
 		clk_disable(mclk_clkout);
 		pr_info("%s: mclk disable\n", __func__);
 	}
+
+	pr_info("%s: %x\n", __func__, readl(EXYNOS_PMU_DEBUG));
 }
 EXPORT_SYMBOL(exynos5_audio_set_mclk);
 

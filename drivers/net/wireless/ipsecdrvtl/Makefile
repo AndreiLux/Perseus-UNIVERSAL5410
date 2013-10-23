@@ -59,7 +59,8 @@ $(TARGET_NAME)-objs := \
 
 EXTRA_CFLAGS += $(_CFLAGS)
 EXTRA_CFLAGS += -D__linux -DDEVL -D_CPUDPENCAP -DIPSECDRVTL_EXPORTS -DNO_HAS160 -DNO_NES -DNO_CRYPT\
-    -Wall -Wno-parentheses -Wno-strict-prototypes -Wno-switch
+    -Wall -Wno-parentheses -Wno-strict-prototypes -Wno-switch\
+    -DMWLAN -DPLAT_VER=$(shell printf 0x%02x%02x%02x $(subst ., ,$(PLATFORM_VERSION))) -DMODEL_$(subst -,_,$(PRODUCT_MODEL))
 
 all:
 	make -C $(SRCPATH) M=$(PWD) modules

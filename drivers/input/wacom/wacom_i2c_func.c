@@ -110,7 +110,7 @@ void forced_release(struct wacom_i2c *wac_i2c)
 	input_report_abs(wac_i2c->input_dev, ABS_PRESSURE, 0);
 	input_report_key(wac_i2c->input_dev, BTN_STYLUS, 0);
 	input_report_key(wac_i2c->input_dev, BTN_TOUCH, 0);
-#if defined(WACOM_IRQ_WORK_AROUND) || defined(WACOM_PDCT_WORK_AROUND)
+#if defined(WACOM_PDCT_WORK_AROUND)
 	input_report_key(wac_i2c->input_dev, BTN_TOOL_RUBBER, 0);
 	input_report_key(wac_i2c->input_dev, BTN_TOOL_PEN, 0);
 	input_report_key(wac_i2c->input_dev, KEY_PEN_PDCT, 0);
@@ -150,20 +150,6 @@ void forced_hover(struct wacom_i2c *wac_i2c)
 #ifdef CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
 	set_dvfs_lock(wac_i2c, true);
 #endif
-}
-#endif
-
-#ifdef WACOM_IRQ_WORK_AROUND
-void wacom_i2c_pendct_work(struct work_struct *work)
-{
-	struct wacom_i2c *wac_i2c =
-	    container_of(work, struct wacom_i2c, pendct_dwork.work);
-
-	printk(KERN_DEBUG "epen:%s , %d\n",
-	       __func__, gpio_get_value(wac_i2c->wac_pdata->gpio_pendct));
-
-	if (gpio_get_value(wac_i2c->wac_pdata->gpio_pendct))
-		forced_release(wac_i2c);
 }
 #endif
 
@@ -322,10 +308,10 @@ int wacom_checksum(struct wacom_i2c *wac_i2c)
 	}
 
 	for (i = 0; i < 5; ++i) {
-		if (buf[i] != Firmware_checksum[i]) {
+		if (buf[i] != fw_chksum[i]) {
 			printk(KERN_DEBUG
 			       "epen:checksum fail %dth %x %x\n", i,
-			       buf[i], Firmware_checksum[i]);
+			       buf[i], fw_chksum[i]);
 			break;
 		}
 	}
@@ -380,9 +366,7 @@ int wacom_i2c_query(struct wacom_i2c *wac_i2c)
 		}
 	}
 
-#if defined(CONFIG_MACH_Q1_BD)\
-	|| defined(CONFIG_MACH_P4NOTE)\
-	|| defined(CONFIG_MACH_T0)
+#if defined(WACOM_USE_PDATA)
 	wac_feature->x_max = (u16) WACOM_MAX_COORD_X;
 	wac_feature->y_max = (u16) WACOM_MAX_COORD_Y;
 #else
@@ -401,11 +385,7 @@ int wacom_i2c_query(struct wacom_i2c *wac_i2c)
 		wac_feature->x_max = (u16) WACOM_MAX_COORD_X;
 		wac_feature->y_max = (u16) WACOM_MAX_COORD_Y;
 		wac_feature->pressure_max = (u16) WACOM_MAX_PRESSURE;
-#ifdef CONFIG_MACH_Q1_BD
-		wac_feature->fw_version = 0xFF;
-#else
 		wac_feature->fw_version = 0;
-#endif
 	}
 #endif
 
@@ -425,10 +405,6 @@ int wacom_i2c_query(struct wacom_i2c *wac_i2c)
 		return ret;
 	}
 	wac_i2c->query_status = true;
-
-#if defined(CONFIG_MACH_P4NOTE) || defined(CONFIG_MACH_KONA)
-	wacom_checksum(wac_i2c);
-#endif
 
 	return 0;
 }
@@ -790,10 +766,7 @@ void ave_level(short CoordX, short CoordY,
 
 static bool wacom_i2c_coord_range(s16 *x, s16 *y)
 {
-#if defined(CONFIG_MACH_P4NOTE)
-	if ((*x <= WACOM_POSX_OFFSET) || (*y <= WACOM_POSY_OFFSET))
-		return false;
-#elif defined(CONFIG_MACH_T0)
+#if defined(CONFIG_MACH_T0)
 	if ((*x >= 0) && (*y >= 0) &&
 		(*x <= WACOM_POSX_MAX) && (*y <= WACOM_POSY_MAX - 50))
 #elif defined(CONFIG_MACH_V1)
@@ -840,15 +813,11 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 	u8 gain = 0;
 	u8 height = 0;
 #endif
-#ifdef WACOM_USE_AVE_TRANSITION
+#ifdef WACOM_USE_AVERAGING
 	int aveStrength = 2;
 #endif
 #ifdef WACOM_USE_SOFTKEY
 	static s16 softkey, pressed, keycode;
-#endif
-
-#ifdef WACOM_IRQ_WORK_AROUND
-	cancel_delayed_work(&wac_i2c->pendct_dwork);
 #endif
 
 	data = wac_i2c->wac_feature->data;
@@ -1023,26 +992,6 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 		wac_i2c->side_pressed = stylus;
 	} else {
 
-#ifdef WACOM_IRQ_WORK_AROUND
-		if (!gpio_get_value(wac_i2c->wac_pdata->gpio_pendct)) {
-			x = ((u16) data[1] << 8) + (u16) data[2];
-			y = ((u16) data[3] << 8) + (u16) data[4];
-
-			if (data[0] & 0x40)
-				wac_i2c->tool = BTN_TOOL_RUBBER;
-			else
-				wac_i2c->tool = BTN_TOOL_PEN;
-
-			input_report_abs(wac_i2c->input_dev, ABS_PRESSURE, 0);
-			input_report_key(wac_i2c->input_dev, BTN_STYLUS, 0);
-			input_report_key(wac_i2c->input_dev, BTN_TOUCH, 0);
-			input_report_key(wac_i2c->input_dev, wac_i2c->tool, 0);
-			input_sync(wac_i2c->input_dev);
-		}
-		schedule_delayed_work(&wac_i2c->pendct_dwork, HZ / 10);
-
-		return 0;
-#else	/* WACOM_IRQ_WORK_AROUND */
 #ifdef WACOM_USE_AVERAGING
 		/* enable emr device */
 		wacom_i2c_coord_average(0, 0, 0, 0);
@@ -1085,7 +1034,6 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 
 #ifdef CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
 		set_dvfs_lock(wac_i2c, false);
-#endif
 #endif
 	}
 

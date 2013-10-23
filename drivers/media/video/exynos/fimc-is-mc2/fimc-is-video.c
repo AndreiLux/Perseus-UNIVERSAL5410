@@ -132,6 +132,20 @@ struct fimc_is_fmt *fimc_is_find_format(u32 *pixelformat,
 
 }
 
+int get_plane_size_flite(int width, int height)
+{
+    int PlaneSize;
+    int Alligned_Width;
+    int Bytes;
+
+    Alligned_Width = (width + 9) / 10 * 10;
+    Bytes = Alligned_Width * 8 / 5 ;
+
+    PlaneSize = Bytes * height;
+
+    return PlaneSize;
+}
+
 void fimc_is_set_plane_size(struct fimc_is_frame_cfg *frame, unsigned int sizes[])
 {
 	u32 plane;
@@ -186,7 +200,7 @@ void fimc_is_set_plane_size(struct fimc_is_frame_cfg *frame, unsigned int sizes[
 	case V4L2_PIX_FMT_SBGGR12:
 		dbg("V4L2_PIX_FMT_SBGGR12(w:%d)(h:%d)\n",
 				frame->width, frame->height);
-		sizes[0] = frame->width*frame->height*2;
+		sizes[0] = get_plane_size_flite(frame->width,frame->height);
 		sizes[1] = SPARE_SIZE;
 		break;
 	default:

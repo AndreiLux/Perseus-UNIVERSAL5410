@@ -224,7 +224,7 @@ static int get_divider(struct device *dev)
 			dev_info(dev, "%s skip, cmu div=%d\n", __func__, info->table[i].cmu_div);
 			goto err;
 		}
-		dev_info(dev, "%dhz div is %d\n", info->table[i].hz, info->table[i].cmu_div);
+		dev_info(dev, "%d div is %d\n", info->table[i].hz, info->table[i].cmu_div);
 		info->table[i].cmu_div--;
 	}
 
@@ -330,7 +330,7 @@ static ssize_t level_show(struct device *dev,
 		return -EINVAL;
 	}
 
-	return sprintf(buf, "%dhz, div=%d\n", info->table[info->level].hz, get_div(info->dev));
+	return sprintf(buf, "%d, div=%d\n", info->table[info->level].hz, get_div(info->dev));
 }
 
 static ssize_t level_store(struct device *dev,
@@ -491,7 +491,7 @@ static void lcdfreq_status_work(struct work_struct *work)
 
 	cancel_delayed_work(&info->work);
 
-	dev_info(info->dev, "hz=%d, usage=%d\n", hz, atomic_read(&info->usage));
+	dev_info(info->dev, "%d, %d\n", hz, atomic_read(&info->usage));
 
 	schedule_delayed_work(&info->work, HZ*120);
 }

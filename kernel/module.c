@@ -62,19 +62,166 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/module.h>
 
-#ifndef ARCH_SHF_SMALL
-#define ARCH_SHF_SMALL 0
+#ifdef TIMA_LKM_AUTH_ENABLED
+#define TIMA_ON_MC20
+
+/*
+ * TEE-dependent configurations
+ */
+#ifdef TIMA_ON_QSEE
+#include <linux/qseecom.h>
+
+#define QSEECOM_ALIGN_SIZE  0x40
+#define QSEECOM_ALIGN_MASK  (QSEECOM_ALIGN_SIZE - 1)
+#define QSEECOM_ALIGN(x)    \
+    ((x + QSEECOM_ALIGN_SIZE) & (~QSEECOM_ALIGN_MASK))
+
+struct qseecom_handle {
+	void *dev;		/* in/out */
+	unsigned char *sbuf;	/* in/out */
+	uint32_t sbuf_len;	/* in/out */
+};
+struct qseecom_handle *qhandle = NULL;
+
+extern int qseecom_start_app(struct qseecom_handle **handle, char *app_name,
+			     uint32_t size);
+extern int qseecom_shutdown_app(struct qseecom_handle **handle);
+extern int qseecom_send_command(struct qseecom_handle *handle, void *send_buf,
+				uint32_t sbuf_len, void *resp_buf,
+				uint32_t rbuf_len);
+
+#ifdef	TIMA_LKM_SET_PAGE_ATTRIB
+#define TIMA_PAC_CMD_ID 0x3f80d221
 #endif
+
+#define SVC_LKMAUTH_ID              0x00050000
+#define LKMAUTH_CREATE_CMD(x) (SVC_LKMAUTH_ID | x)
+
+/* Commands for lkmauth tzapp */
+typedef enum {
+	LKMAUTH_CMD_AUTH = LKMAUTH_CREATE_CMD(0x00000000),
+	LKMAUTH_CMD_UNKNOWN = LKMAUTH_CREATE_CMD(0x7FFFFFFF)
+} lkmauth_cmd_type;
+#endif /* End TIMA_ON_QSEE */
+
+#ifdef TIMA_ON_MC20
+
+#include <../drivers/gud/MobiCoreKernelApi/public/mobicore_driver_api.h>
+#include <../drivers/gud/MobiCoreKernelApi/public/mobicore_driver_cmd.h>
+
+#include <linux/fs.h>
+#include <asm/uaccess.h>
+
+#define TL_TIMA_LKMAUTH_UUID {{ 0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xb }}
+#define TL_DRV_PKM_UUID  {{ 0xff, 0xff, 0xff, 0xff, 0xd0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa }}
+
+/* Commands for lkmauth tl */
+#define CMD_TIMA_LKMAUTH_LOAD_HASH			0x00000009
+#define CMD_TIMA_LKMAUTH_VERIFY_MODULE			0x00000010
+#define CMD_TIMA_LKMAUTH_UNKNOWN			0x7FFFFFFF
+
+/* Return codes for lkmauth tl */
+#define	RET_TL_TIMA_LKMAUTH_OK				0x00000000
+#define	RET_TL_TIMA_LKMAUTH_HASH_LOADED			0x00000001
+
+/* Error codes for lkmauth tl */
+#define	RET_TL_TIMA_LKMAUTH_LG_MAXKO			0x00000010
+#define	RET_TL_TIMA_LKMAUTH_SHA1_INIT_FAIL		0x00000020
+#define	RET_TL_TIMA_LKMAUTH_SHA1_FINAL_FAIL		0x00000030
+#define	RET_TL_TIMA_LKMAUTH_VERIFY_FAIL			0x00000040
+
+/* Return codes for lkmauth function */
+#define	RET_LKMAUTH_SUCCESS				0
+#define	RET_LKMAUTH_FAIL				-1
+
+#define HASH_SIZE 20
+#define TIMA_SIGN_LEN 256	/* the rsa signature length of lkm_sec_info */
+#define BOOTMODE_RECOVERY 2	/* bootmode in ATAG_CMDLINE for recovery mode */
+
+uint8_t *tci = NULL;
+uint8_t *drv_tci = NULL;
+uint8_t lkmauth_tl_loaded = 0;
+uint8_t lkm_sec_info_loaded = 0;
+struct mc_session_handle mchandle;
+struct mc_session_handle drv_mchandle;
+
+unsigned int lkmauth_bootmode;
+static int __init lkmauth_bootmode_setup(char *str)
+{
+	get_option(&str, &lkmauth_bootmode);
+	return 1;
+}
+
+__setup("bootmode=", lkmauth_bootmode_setup);
+
+#endif /* End TIMA_ON_MC20 */
+
+/*
+ * TEE-independent configurations
+ */
+#include <linux/kobject.h>
+DEFINE_MUTEX(lkmauth_mutex);
+extern struct device *tima_uevent_dev;
+
+/* Message types for the lkmauth command */
+typedef struct lkmauth_hash_s {
+	uint32_t cmd_id;
+	uint32_t hash_buf_start;	/* starting address of buf for ko hashes */
+	uint32_t hash_buf_len;	/* length of hash buf, should be multiples of 20 bytes */
+	uint8_t ko_num;		/* total number ko */
+} __attribute__ ((packed)) lkmauth_hash_t;
+
+typedef struct lkmauth_req_s {
+	uint32_t cmd_id;
+	uint32_t module_addr_start;
+	uint32_t module_len;
+	uint32_t min;
+	uint32_t max;
+	char module_name[280];
+	int module_name_len;
+} __attribute__ ((packed)) lkmauth_req_t;
+
+typedef struct lkmauth_rsp_s {
+	/* First 4 bytes should always be command id */
+	uint32_t cmd_id;
+	int ret;
+	union {
+		unsigned char hash[20];
+		char result_ondemand[256];
+	} __attribute__ ((packed)) result;
+} __attribute__ ((packed)) lkmauth_rsp_t;
+
+#ifdef TIMA_ON_MC20
+
+typedef struct {
+	union {
+		lkmauth_hash_t lkmauth_hash;
+		lkmauth_req_t lkmauth_req;
+		lkmauth_rsp_t lkmauth_rsp;
+	};
+} tciMessage_t;
+
+#endif
+
+#endif /* End TIMA_LKM_AUTH_ENABLED */
 
 /*
  * Modules' sections will be aligned on page boundaries
  * to ensure complete separation of code and data, but
  * only when CONFIG_DEBUG_SET_MODULE_RONX=y
  */
-#ifdef CONFIG_DEBUG_SET_MODULE_RONX
-# define debug_align(X) ALIGN(X, PAGE_SIZE)
+#ifdef	TIMA_LKM_SET_PAGE_ATTRIB
+#define debug_align(X) ALIGN(X, PAGE_SIZE)
 #else
-# define debug_align(X) (X)
+#ifdef CONFIG_DEBUG_SET_MODULE_RONX
+#define debug_align(X) ALIGN(X, PAGE_SIZE)
+#else
+#define debug_align(X) (X)
+#endif
+#endif
+
+#ifndef ARCH_SHF_SMALL
+#define ARCH_SHF_SMALL 0
 #endif
 
 /*
@@ -99,9 +246,8 @@ DEFINE_MUTEX(module_mutex);
 EXPORT_SYMBOL_GPL(module_mutex);
 static LIST_HEAD(modules);
 #ifdef CONFIG_KGDB_KDB
-struct list_head *kdb_modules = &modules; /* kdb needs the list of modules */
+struct list_head *kdb_modules = &modules;	/* kdb needs the list of modules */
 #endif /* CONFIG_KGDB_KDB */
-
 
 /* Block module loading/unloading? */
 int modules_disabled = 0;
@@ -116,16 +262,18 @@ static BLOCKING_NOTIFIER_HEAD(module_notify_list);
  * Protected by module_mutex. */
 static unsigned long module_addr_min = -1UL, module_addr_max = 0;
 
-int register_module_notifier(struct notifier_block * nb)
+int register_module_notifier(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_register(&module_notify_list, nb);
 }
+
 EXPORT_SYMBOL(register_module_notifier);
 
-int unregister_module_notifier(struct notifier_block * nb)
+int unregister_module_notifier(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_unregister(&module_notify_list, nb);
 }
+
 EXPORT_SYMBOL(unregister_module_notifier);
 
 struct load_info {
@@ -168,6 +316,7 @@ void __module_put_and_exit(struct module *mod, long code)
 	module_put(mod);
 	do_exit(code);
 }
+
 EXPORT_SYMBOL(__module_put_and_exit);
 
 /* Find a module section: 0 means not found. */
@@ -195,8 +344,7 @@ static void *section_addr(const struct load_info *info, const char *name)
 /* Find a module section, or NULL.  Fill in number of "objects" in section. */
 static void *section_objs(const struct load_info *info,
 			  const char *name,
-			  size_t object_size,
-			  unsigned int *num)
+			  size_t object_size, unsigned int *num)
 {
 	unsigned int sec = find_sec(info, name);
 
@@ -233,10 +381,9 @@ extern const unsigned long __start___kcrctab_unused_gpl[];
 static bool each_symbol_in_section(const struct symsearch *arr,
 				   unsigned int arrsize,
 				   struct module *owner,
-				   bool (*fn)(const struct symsearch *syms,
-					      struct module *owner,
-					      void *data),
-				   void *data)
+				   bool(*fn) (const struct symsearch * syms,
+					      struct module * owner,
+					      void *data), void *data)
 {
 	unsigned int j;
 
@@ -249,28 +396,27 @@ static bool each_symbol_in_section(const struct symsearch *arr,
 }
 
 /* Returns true as soon as fn returns true, otherwise false. */
-bool each_symbol_section(bool (*fn)(const struct symsearch *arr,
-				    struct module *owner,
-				    void *data),
-			 void *data)
+bool each_symbol_section(bool(*fn) (const struct symsearch * arr,
+				    struct module * owner,
+				    void *data), void *data)
 {
 	struct module *mod;
 	static const struct symsearch arr[] = {
-		{ __start___ksymtab, __stop___ksymtab, __start___kcrctab,
-		  NOT_GPL_ONLY, false },
-		{ __start___ksymtab_gpl, __stop___ksymtab_gpl,
-		  __start___kcrctab_gpl,
-		  GPL_ONLY, false },
-		{ __start___ksymtab_gpl_future, __stop___ksymtab_gpl_future,
-		  __start___kcrctab_gpl_future,
-		  WILL_BE_GPL_ONLY, false },
+		{__start___ksymtab, __stop___ksymtab, __start___kcrctab,
+		 NOT_GPL_ONLY, false},
+		{__start___ksymtab_gpl, __stop___ksymtab_gpl,
+		 __start___kcrctab_gpl,
+		 GPL_ONLY, false},
+		{__start___ksymtab_gpl_future, __stop___ksymtab_gpl_future,
+		 __start___kcrctab_gpl_future,
+		 WILL_BE_GPL_ONLY, false},
 #ifdef CONFIG_UNUSED_SYMBOLS
-		{ __start___ksymtab_unused, __stop___ksymtab_unused,
-		  __start___kcrctab_unused,
-		  NOT_GPL_ONLY, true },
-		{ __start___ksymtab_unused_gpl, __stop___ksymtab_unused_gpl,
-		  __start___kcrctab_unused_gpl,
-		  GPL_ONLY, true },
+		{__start___ksymtab_unused, __stop___ksymtab_unused,
+		 __start___kcrctab_unused,
+		 NOT_GPL_ONLY, true},
+		{__start___ksymtab_unused_gpl, __stop___ksymtab_unused_gpl,
+		 __start___kcrctab_unused_gpl,
+		 GPL_ONLY, true},
 #endif
 	};
 
@@ -279,24 +425,24 @@ bool each_symbol_section(bool (*fn)(const struct symsearch *arr,
 
 	list_for_each_entry_rcu(mod, &modules, list) {
 		struct symsearch arr[] = {
-			{ mod->syms, mod->syms + mod->num_syms, mod->crcs,
-			  NOT_GPL_ONLY, false },
-			{ mod->gpl_syms, mod->gpl_syms + mod->num_gpl_syms,
-			  mod->gpl_crcs,
-			  GPL_ONLY, false },
-			{ mod->gpl_future_syms,
-			  mod->gpl_future_syms + mod->num_gpl_future_syms,
-			  mod->gpl_future_crcs,
-			  WILL_BE_GPL_ONLY, false },
+			{mod->syms, mod->syms + mod->num_syms, mod->crcs,
+			 NOT_GPL_ONLY, false},
+			{mod->gpl_syms, mod->gpl_syms + mod->num_gpl_syms,
+			 mod->gpl_crcs,
+			 GPL_ONLY, false},
+			{mod->gpl_future_syms,
+			 mod->gpl_future_syms + mod->num_gpl_future_syms,
+			 mod->gpl_future_crcs,
+			 WILL_BE_GPL_ONLY, false},
 #ifdef CONFIG_UNUSED_SYMBOLS
-			{ mod->unused_syms,
-			  mod->unused_syms + mod->num_unused_syms,
-			  mod->unused_crcs,
-			  NOT_GPL_ONLY, true },
-			{ mod->unused_gpl_syms,
-			  mod->unused_gpl_syms + mod->num_unused_gpl_syms,
-			  mod->unused_gpl_crcs,
-			  GPL_ONLY, true },
+			{mod->unused_syms,
+			 mod->unused_syms + mod->num_unused_syms,
+			 mod->unused_crcs,
+			 NOT_GPL_ONLY, true},
+			{mod->unused_gpl_syms,
+			 mod->unused_gpl_syms + mod->num_unused_gpl_syms,
+			 mod->unused_gpl_crcs,
+			 GPL_ONLY, true},
 #endif
 		};
 
@@ -305,6 +451,7 @@ bool each_symbol_section(bool (*fn)(const struct symsearch *arr,
 	}
 	return false;
 }
+
 EXPORT_SYMBOL_GPL(each_symbol_section);
 
 struct find_symbol_arg {
@@ -320,8 +467,7 @@ struct find_symbol_arg {
 };
 
 static bool check_symbol(const struct symsearch *syms,
-				 struct module *owner,
-				 unsigned int symnum, void *data)
+			 struct module *owner, unsigned int symnum, void *data)
 {
 	struct find_symbol_arg *fsa = data;
 
@@ -337,7 +483,6 @@ static bool check_symbol(const struct symsearch *syms,
 			       "in the kernel source tree for more details.\n");
 		}
 	}
-
 #ifdef CONFIG_UNUSED_SYMBOLS
 	if (syms->unused && fsa->warn) {
 		printk(KERN_WARNING "Symbol %s is marked as UNUSED, "
@@ -362,19 +507,19 @@ static int cmp_name(const void *va, const void *vb)
 {
 	const char *a;
 	const struct kernel_symbol *b;
-	a = va; b = vb;
+	a = va;
+	b = vb;
 	return strcmp(a, b->name);
 }
 
 static bool find_symbol_in_section(const struct symsearch *syms,
-				   struct module *owner,
-				   void *data)
+				   struct module *owner, void *data)
 {
 	struct find_symbol_arg *fsa = data;
 	struct kernel_symbol *sym;
 
 	sym = bsearch(fsa->name, syms->start, syms->stop - syms->start,
-			sizeof(struct kernel_symbol), cmp_name);
+		      sizeof(struct kernel_symbol), cmp_name);
 
 	if (sym != NULL && check_symbol(syms, owner, sym - syms->start, data))
 		return true;
@@ -387,8 +532,7 @@ static bool find_symbol_in_section(const struct symsearch *syms,
 const struct kernel_symbol *find_symbol(const char *name,
 					struct module **owner,
 					const unsigned long **crc,
-					bool gplok,
-					bool warn)
+					bool gplok, bool warn)
 {
 	struct find_symbol_arg fsa;
 
@@ -407,6 +551,7 @@ const struct kernel_symbol *find_symbol(const char *name,
 	pr_debug("Failed to find symbol %s\n", name);
 	return NULL;
 }
+
 EXPORT_SYMBOL_GPL(find_symbol);
 
 /* Search for module by name: must hold module_mutex. */
@@ -420,6 +565,7 @@ struct module *find_module(const char *name)
 	}
 	return NULL;
 }
+
 EXPORT_SYMBOL_GPL(find_module);
 
 #ifdef CONFIG_SMP
@@ -465,7 +611,7 @@ static void percpu_modcopy(struct module *mod,
 	int cpu;
 
 	for_each_possible_cpu(cpu)
-		memcpy(per_cpu_ptr(mod->percpu, cpu), from, size);
+	    memcpy(per_cpu_ptr(mod->percpu, cpu), from, size);
 }
 
 /**
@@ -508,24 +654,29 @@ static inline void __percpu *mod_percpu(struct module *mod)
 {
 	return NULL;
 }
+
 static inline int percpu_modalloc(struct module *mod,
 				  unsigned long size, unsigned long align)
 {
 	return -ENOMEM;
 }
+
 static inline void percpu_modfree(struct module *mod)
 {
 }
+
 static unsigned int find_pcpusec(struct load_info *info)
 {
 	return 0;
 }
+
 static inline void percpu_modcopy(struct module *mod,
 				  const void *from, unsigned long size)
 {
 	/* pcpusec should be 0, and size of that section should be 0. */
 	BUG_ON(size != 0);
 }
+
 bool is_module_percpu_address(unsigned long addr)
 {
 	return false;
@@ -563,7 +714,7 @@ static struct module_attribute modinfo_##field = {                    \
 MODINFO_ATTR(version);
 MODINFO_ATTR(srcversion);
 
-static char last_unloaded_module[MODULE_NAME_LEN+1];
+static char last_unloaded_module[MODULE_NAME_LEN + 1];
 
 #ifdef CONFIG_MODULE_UNLOAD
 
@@ -647,6 +798,7 @@ int ref_module(struct module *a, struct module *b)
 	}
 	return 0;
 }
+
 EXPORT_SYMBOL_GPL(ref_module);
 
 /* Clear the unload stuff of the module. */
@@ -683,8 +835,7 @@ static inline int try_force_unload(unsigned int flags)
 }
 #endif /* CONFIG_MODULE_FORCE_UNLOAD */
 
-struct stopref
-{
+struct stopref {
 	struct module *mod;
 	int flags;
 	int *forced;
@@ -726,7 +877,7 @@ unsigned long module_refcount(struct module *mod)
 	int cpu;
 
 	for_each_possible_cpu(cpu)
-		decs += per_cpu_ptr(mod->refptr, cpu)->decs;
+	    decs += per_cpu_ptr(mod->refptr, cpu)->decs;
 	/*
 	 * ensure the incs are added up after the decs.
 	 * module_put ensures incs are visible before decs with smp_wmb.
@@ -742,9 +893,10 @@ unsigned long module_refcount(struct module *mod)
 	 */
 	smp_rmb();
 	for_each_possible_cpu(cpu)
-		incs += per_cpu_ptr(mod->refptr, cpu)->incs;
+	    incs += per_cpu_ptr(mod->refptr, cpu)->incs;
 	return incs - decs;
 }
+
 EXPORT_SYMBOL(module_refcount);
 
 /* This exists whether we can unload or not */
@@ -775,9 +927,9 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 	if (!capable(CAP_SYS_MODULE) || modules_disabled)
 		return -EPERM;
 
-	if (strncpy_from_user(name, name_user, MODULE_NAME_LEN-1) < 0)
+	if (strncpy_from_user(name, name_user, MODULE_NAME_LEN - 1) < 0)
 		return -EFAULT;
-	name[MODULE_NAME_LEN-1] = '\0';
+	name[MODULE_NAME_LEN - 1] = '\0';
 
 	if (mutex_lock_interruptible(&module_mutex) != 0)
 		return -EINTR;
@@ -797,7 +949,7 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 	/* Doing init or already dying? */
 	if (mod->state != MODULE_STATE_LIVE) {
 		/* FIXME: if (force), slam module count and wake up
-                   waiter --RR */
+		   waiter --RR */
 		pr_debug("%s already dying\n", mod->name);
 		ret = -EBUSY;
 		goto out;
@@ -851,7 +1003,7 @@ static inline void print_unload_info(struct seq_file *m, struct module *mod)
 	seq_printf(m, " %lu ", module_refcount(mod));
 
 	/* Always include a trailing , so userspace can differentiate
-           between this and the old multi-field proc format. */
+	   between this and the old multi-field proc format. */
 	list_for_each_entry(use, &mod->source_list, source_list) {
 		printed_something = 1;
 		seq_printf(m, "%s,", use->source->name);
@@ -876,6 +1028,7 @@ void __symbol_put(const char *symbol)
 	module_put(owner);
 	preempt_enable();
 }
+
 EXPORT_SYMBOL(__symbol_put);
 
 /* Note this assumes addr is a function, which it currently always is. */
@@ -893,6 +1046,7 @@ void symbol_put_addr(void *addr)
 	BUG_ON(!modaddr);
 	module_put(modaddr);
 }
+
 EXPORT_SYMBOL_GPL(symbol_put_addr);
 
 static ssize_t show_refcnt(struct module_attribute *mattr,
@@ -902,7 +1056,7 @@ static ssize_t show_refcnt(struct module_attribute *mattr,
 }
 
 static struct module_attribute modinfo_refcnt =
-	__ATTR(refcnt, 0444, show_refcnt, NULL);
+__ATTR(refcnt, 0444, show_refcnt, NULL);
 
 void __module_get(struct module *module)
 {
@@ -913,6 +1067,7 @@ void __module_get(struct module *module)
 		preempt_enable();
 	}
 }
+
 EXPORT_SYMBOL(__module_get);
 
 bool try_module_get(struct module *module)
@@ -932,13 +1087,14 @@ bool try_module_get(struct module *module)
 	}
 	return ret;
 }
+
 EXPORT_SYMBOL(try_module_get);
 
 void module_put(struct module *module)
 {
 	if (module) {
 		preempt_disable();
-		smp_wmb(); /* see comment in module_refcount */
+		smp_wmb();	/* see comment in module_refcount */
 		__this_cpu_inc(module->refptr->decs);
 
 		trace_module_put(module, _RET_IP_);
@@ -948,6 +1104,7 @@ void module_put(struct module *module)
 		preempt_enable();
 	}
 }
+
 EXPORT_SYMBOL(module_put);
 
 #else /* !CONFIG_MODULE_UNLOAD */
@@ -965,6 +1122,7 @@ int ref_module(struct module *a, struct module *b)
 {
 	return strong_try_module_get(b);
 }
+
 EXPORT_SYMBOL_GPL(ref_module);
 
 static inline int module_unload_init(struct module *mod)
@@ -1013,7 +1171,7 @@ static ssize_t show_initstate(struct module_attribute *mattr,
 }
 
 static struct module_attribute modinfo_initstate =
-	__ATTR(initstate, 0444, show_initstate, NULL);
+__ATTR(initstate, 0444, show_initstate, NULL);
 
 static ssize_t store_uevent(struct module_attribute *mattr,
 			    struct module_kobject *mk,
@@ -1027,7 +1185,7 @@ static ssize_t store_uevent(struct module_attribute *mattr,
 }
 
 struct module_attribute module_uevent =
-	__ATTR(uevent, 0200, NULL, store_uevent);
+__ATTR(uevent, 0200, NULL, store_uevent);
 
 static ssize_t show_coresize(struct module_attribute *mattr,
 			     struct module_kobject *mk, char *buffer)
@@ -1036,7 +1194,7 @@ static ssize_t show_coresize(struct module_attribute *mattr,
 }
 
 static struct module_attribute modinfo_coresize =
-	__ATTR(coresize, 0444, show_coresize, NULL);
+__ATTR(coresize, 0444, show_coresize, NULL);
 
 static ssize_t show_initsize(struct module_attribute *mattr,
 			     struct module_kobject *mk, char *buffer)
@@ -1045,7 +1203,7 @@ static ssize_t show_initsize(struct module_attribute *mattr,
 }
 
 static struct module_attribute modinfo_initsize =
-	__ATTR(initsize, 0444, show_initsize, NULL);
+__ATTR(initsize, 0444, show_initsize, NULL);
 
 static ssize_t show_taint(struct module_attribute *mattr,
 			  struct module_kobject *mk, char *buffer)
@@ -1058,7 +1216,7 @@ static ssize_t show_taint(struct module_attribute *mattr,
 }
 
 static struct module_attribute modinfo_taint =
-	__ATTR(taint, 0444, show_taint, NULL);
+__ATTR(taint, 0444, show_taint, NULL);
 
 static struct module_attribute *modinfo_attrs[] = {
 	&module_uevent,
@@ -1101,10 +1259,10 @@ static unsigned long maybe_relocated(unsigned long crc,
 	return crc;
 }
 
-static int check_version(Elf_Shdr *sechdrs,
+static int check_version(Elf_Shdr * sechdrs,
 			 unsigned int versindex,
 			 const char *symname,
-			 struct module *mod, 
+			 struct module *mod,
 			 const unsigned long *crc,
 			 const struct module *crc_owner)
 {
@@ -1119,9 +1277,9 @@ static int check_version(Elf_Shdr *sechdrs,
 	if (versindex == 0)
 		return try_to_force_load(mod, symname) == 0;
 
-	versions = (void *) sechdrs[versindex].sh_addr;
+	versions = (void *)sechdrs[versindex].sh_addr;
 	num_versions = sechdrs[versindex].sh_size
-		/ sizeof(struct modversion_info);
+	    / sizeof(struct modversion_info);
 
 	for (i = 0; i < num_versions; i++) {
 		if (strcmp(versions[i].name, symname) != 0)
@@ -1130,7 +1288,7 @@ static int check_version(Elf_Shdr *sechdrs,
 		if (versions[i].crc == maybe_relocated(*crc, crc_owner))
 			return 1;
 		pr_debug("Found checksum %lX vs module %lX\n",
-		       maybe_relocated(*crc, crc_owner), versions[i].crc);
+			 maybe_relocated(*crc, crc_owner), versions[i].crc);
 		goto bad_version;
 	}
 
@@ -1144,7 +1302,7 @@ bad_version:
 	return 0;
 }
 
-static inline int check_modstruct_version(Elf_Shdr *sechdrs,
+static inline int check_modstruct_version(Elf_Shdr * sechdrs,
 					  unsigned int versindex,
 					  struct module *mod)
 {
@@ -1170,17 +1328,17 @@ static inline int same_magic(const char *amagic, const char *bmagic,
 	return strcmp(amagic, bmagic) == 0;
 }
 #else
-static inline int check_version(Elf_Shdr *sechdrs,
+static inline int check_version(Elf_Shdr * sechdrs,
 				unsigned int versindex,
 				const char *symname,
-				struct module *mod, 
+				struct module *mod,
 				const unsigned long *crc,
 				const struct module *crc_owner)
 {
 	return 1;
 }
 
-static inline int check_modstruct_version(Elf_Shdr *sechdrs,
+static inline int check_modstruct_version(Elf_Shdr * sechdrs,
 					  unsigned int versindex,
 					  struct module *mod)
 {
@@ -1207,7 +1365,8 @@ static const struct kernel_symbol *resolve_symbol(struct module *mod,
 
 	mutex_lock(&module_mutex);
 	sym = find_symbol(name, &owner, &crc,
-			  !(mod->taints & (1 << TAINT_PROPRIETARY_MODULE)), true);
+			  !(mod->taints & (1 << TAINT_PROPRIETARY_MODULE)),
+			  true);
 	if (!sym)
 		goto unlock;
 
@@ -1231,19 +1390,22 @@ unlock:
 	return sym;
 }
 
-static const struct kernel_symbol *
-resolve_symbol_wait(struct module *mod,
-		    const struct load_info *info,
-		    const char *name)
+static const struct kernel_symbol *resolve_symbol_wait(struct module *mod,
+						       const struct load_info
+						       *info, const char *name)
 {
 	const struct kernel_symbol *ksym;
 	char owner[MODULE_NAME_LEN];
 
 	if (wait_event_interruptible_timeout(module_wq,
-			!IS_ERR(ksym = resolve_symbol(mod, info, name, owner))
-			|| PTR_ERR(ksym) != -EBUSY,
+					     !IS_ERR(ksym =
+						     resolve_symbol(mod, info,
+								    name,
+								    owner))
+					     || PTR_ERR(ksym) != -EBUSY,
 					     30 * HZ) <= 0) {
-		printk(KERN_WARNING "%s: gave up waiting for init of module %s.\n",
+		printk(KERN_WARNING
+		       "%s: gave up waiting for init of module %s.\n",
 		       mod->name, owner);
 	}
 	return ksym;
@@ -1256,20 +1418,18 @@ resolve_symbol_wait(struct module *mod,
 #ifdef CONFIG_SYSFS
 
 #ifdef CONFIG_KALLSYMS
-static inline bool sect_empty(const Elf_Shdr *sect)
+static inline bool sect_empty(const Elf_Shdr * sect)
 {
 	return !(sect->sh_flags & SHF_ALLOC) || sect->sh_size == 0;
 }
 
-struct module_sect_attr
-{
+struct module_sect_attr {
 	struct module_attribute mattr;
 	char *name;
 	unsigned long address;
 };
 
-struct module_sect_attrs
-{
+struct module_sect_attrs {
 	struct attribute_group grp;
 	unsigned int nsections;
 	struct module_sect_attr attrs[0];
@@ -1279,7 +1439,7 @@ static ssize_t module_sect_show(struct module_attribute *mattr,
 				struct module_kobject *mk, char *buf)
 {
 	struct module_sect_attr *sattr =
-		container_of(mattr, struct module_sect_attr, mattr);
+	    container_of(mattr, struct module_sect_attr, mattr);
 	return sprintf(buf, "0x%pK\n", (void *)sattr->address);
 }
 
@@ -1324,7 +1484,7 @@ static void add_sect_attrs(struct module *mod, const struct load_info *info)
 			continue;
 		sattr->address = sec->sh_addr;
 		sattr->name = kstrdup(info->secstrings + sec->sh_name,
-					GFP_KERNEL);
+				      GFP_KERNEL);
 		if (sattr->name == NULL)
 			goto out;
 		sect_attrs->nsections++;
@@ -1342,15 +1502,14 @@ static void add_sect_attrs(struct module *mod, const struct load_info *info)
 
 	mod->sect_attrs = sect_attrs;
 	return;
-  out:
+out:
 	free_sect_attrs(sect_attrs);
 }
 
 static void remove_sect_attrs(struct module *mod)
 {
 	if (mod->sect_attrs) {
-		sysfs_remove_group(&mod->mkobj.kobj,
-				   &mod->sect_attrs->grp);
+		sysfs_remove_group(&mod->mkobj.kobj, &mod->sect_attrs->grp);
 		/* We are positive that no one is using any sect attrs
 		 * at this point.  Deallocate immediately. */
 		free_sect_attrs(mod->sect_attrs);
@@ -1427,7 +1586,7 @@ static void add_notes_attrs(struct module *mod, const struct load_info *info)
 			nattr->attr.name = mod->sect_attrs->attrs[loaded].name;
 			nattr->attr.mode = S_IRUGO;
 			nattr->size = info->sechdrs[i].sh_size;
-			nattr->private = (void *) info->sechdrs[i].sh_addr;
+			nattr->private = (void *)info->sechdrs[i].sh_addr;
 			nattr->read = module_notes_read;
 			++nattr;
 		}
@@ -1446,7 +1605,7 @@ static void add_notes_attrs(struct module *mod, const struct load_info *info)
 	mod->notes_attrs = notes_attrs;
 	return;
 
-  out:
+out:
 	free_notes_attrs(notes_attrs, i);
 }
 
@@ -1499,7 +1658,7 @@ static void del_usage_links(struct module *mod)
 
 	mutex_lock(&module_mutex);
 	list_for_each_entry(use, &mod->target_list, target_list)
-		sysfs_remove_link(use->target->holders_dir, mod->name);
+	    sysfs_remove_link(use->target->holders_dir, mod->name);
 	mutex_unlock(&module_mutex);
 #endif
 }
@@ -1512,18 +1671,19 @@ static int module_add_modinfo_attrs(struct module *mod)
 	int i;
 
 	mod->modinfo_attrs = kzalloc((sizeof(struct module_attribute) *
-					(ARRAY_SIZE(modinfo_attrs) + 1)),
-					GFP_KERNEL);
+				      (ARRAY_SIZE(modinfo_attrs) + 1)),
+				     GFP_KERNEL);
 	if (!mod->modinfo_attrs)
 		return -ENOMEM;
 
 	temp_attr = mod->modinfo_attrs;
 	for (i = 0; (attr = modinfo_attrs[i]) && !error; i++) {
-		if (!attr->test ||
-		    (attr->test && attr->test(mod))) {
+		if (!attr->test || (attr->test && attr->test(mod))) {
 			memcpy(temp_attr, attr, sizeof(*temp_attr));
 			sysfs_attr_init(&temp_attr->attr);
-			error = sysfs_create_file(&mod->mkobj.kobj,&temp_attr->attr);
+			error =
+			    sysfs_create_file(&mod->mkobj.kobj,
+					      &temp_attr->attr);
 			++temp_attr;
 		}
 	}
@@ -1539,7 +1699,7 @@ static void module_remove_modinfo_attrs(struct module *mod)
 		/* pick a field to test for end of list */
 		if (!attr->attr.name)
 			break;
-		sysfs_remove_file(&mod->mkobj.kobj,&attr->attr);
+		sysfs_remove_file(&mod->mkobj.kobj, &attr->attr);
 		if (attr->free)
 			attr->free(mod);
 	}
@@ -1582,8 +1742,7 @@ out:
 
 static int mod_sysfs_setup(struct module *mod,
 			   const struct load_info *info,
-			   struct kernel_param *kparam,
-			   unsigned int num_params)
+			   struct kernel_param *kparam, unsigned int num_params)
 {
 	int err;
 
@@ -1633,8 +1792,7 @@ static void mod_sysfs_fini(struct module *mod)
 
 static int mod_sysfs_setup(struct module *mod,
 			   const struct load_info *info,
-			   struct kernel_param *kparam,
-			   unsigned int num_params)
+			   struct kernel_param *kparam, unsigned int num_params)
 {
 	return 0;
 }
@@ -1680,7 +1838,8 @@ static int __unlink_module(void *_mod)
  * LKM RO/NX protection: protect module's text/ro-data
  * from modification and any data from execution.
  */
-void set_page_attributes(void *start, void *end, int (*set)(unsigned long start, int num_pages))
+void set_page_attributes(void *start, void *end,
+			 int (*set) (unsigned long start, int num_pages))
 {
 	unsigned long begin_pfn = PFN_DOWN((unsigned long)start);
 	unsigned long end_pfn = PFN_DOWN((unsigned long)end);
@@ -1690,9 +1849,8 @@ void set_page_attributes(void *start, void *end, int (*set)(unsigned long start,
 }
 
 static void set_section_ro_nx(void *base,
-			unsigned long text_size,
-			unsigned long ro_size,
-			unsigned long total_size)
+			      unsigned long text_size,
+			      unsigned long ro_size, unsigned long total_size)
 {
 	/* begin and end PFNs of the current subsection */
 	unsigned long begin_pfn;
@@ -1715,28 +1873,27 @@ static void set_section_ro_nx(void *base,
 		begin_pfn = PFN_UP((unsigned long)base + text_size);
 		end_pfn = PFN_UP((unsigned long)base + total_size);
 		if (end_pfn > begin_pfn)
-			set_memory_nx(begin_pfn << PAGE_SHIFT, end_pfn - begin_pfn);
+			set_memory_nx(begin_pfn << PAGE_SHIFT,
+				      end_pfn - begin_pfn);
 	}
 }
 
 static void unset_module_core_ro_nx(struct module *mod)
 {
 	set_page_attributes(mod->module_core + mod->core_text_size,
-		mod->module_core + mod->core_size,
-		set_memory_x);
+			    mod->module_core + mod->core_size, set_memory_x);
 	set_page_attributes(mod->module_core,
-		mod->module_core + mod->core_ro_size,
-		set_memory_rw);
+			    mod->module_core + mod->core_ro_size,
+			    set_memory_rw);
 }
 
 static void unset_module_init_ro_nx(struct module *mod)
 {
 	set_page_attributes(mod->module_init + mod->init_text_size,
-		mod->module_init + mod->init_size,
-		set_memory_x);
+			    mod->module_init + mod->init_size, set_memory_x);
 	set_page_attributes(mod->module_init,
-		mod->module_init + mod->init_ro_size,
-		set_memory_rw);
+			    mod->module_init + mod->init_ro_size,
+			    set_memory_rw);
 }
 
 /* Iterate through all modules and set each module's text as RW */
@@ -1748,13 +1905,13 @@ void set_all_modules_text_rw(void)
 	list_for_each_entry_rcu(mod, &modules, list) {
 		if ((mod->module_core) && (mod->core_text_size)) {
 			set_page_attributes(mod->module_core,
-						mod->module_core + mod->core_text_size,
-						set_memory_rw);
+					    mod->module_core +
+					    mod->core_text_size, set_memory_rw);
 		}
 		if ((mod->module_init) && (mod->init_text_size)) {
 			set_page_attributes(mod->module_init,
-						mod->module_init + mod->init_text_size,
-						set_memory_rw);
+					    mod->module_init +
+					    mod->init_text_size, set_memory_rw);
 		}
 	}
 	mutex_unlock(&module_mutex);
@@ -1769,21 +1926,31 @@ void set_all_modules_text_ro(void)
 	list_for_each_entry_rcu(mod, &modules, list) {
 		if ((mod->module_core) && (mod->core_text_size)) {
 			set_page_attributes(mod->module_core,
-						mod->module_core + mod->core_text_size,
-						set_memory_ro);
+					    mod->module_core +
+					    mod->core_text_size, set_memory_ro);
 		}
 		if ((mod->module_init) && (mod->init_text_size)) {
 			set_page_attributes(mod->module_init,
-						mod->module_init + mod->init_text_size,
-						set_memory_ro);
+					    mod->module_init +
+					    mod->init_text_size, set_memory_ro);
 		}
 	}
 	mutex_unlock(&module_mutex);
 }
 #else
-static inline void set_section_ro_nx(void *base, unsigned long text_size, unsigned long ro_size, unsigned long total_size) { }
-static void unset_module_core_ro_nx(struct module *mod) { }
-static void unset_module_init_ro_nx(struct module *mod) { }
+static inline void set_section_ro_nx(void *base, unsigned long text_size,
+				     unsigned long ro_size,
+				     unsigned long total_size)
+{
+}
+
+static void unset_module_core_ro_nx(struct module *mod)
+{
+}
+
+static void unset_module_init_ro_nx(struct module *mod)
+{
+}
 #endif
 
 void __weak module_free(struct module *mod, void *module_region)
@@ -1849,6 +2016,7 @@ void *__symbol_get(const char *symbol)
 
 	return sym ? (void *)sym->value : NULL;
 }
+
 EXPORT_SYMBOL_GPL(__symbol_get);
 
 /*
@@ -1866,12 +2034,14 @@ static int verify_export_symbols(struct module *mod)
 		const struct kernel_symbol *sym;
 		unsigned int num;
 	} arr[] = {
-		{ mod->syms, mod->num_syms },
-		{ mod->gpl_syms, mod->num_gpl_syms },
-		{ mod->gpl_future_syms, mod->num_gpl_future_syms },
+		{
+		mod->syms, mod->num_syms}, {
+		mod->gpl_syms, mod->num_gpl_syms}, {
+		mod->gpl_future_syms, mod->num_gpl_future_syms},
 #ifdef CONFIG_UNUSED_SYMBOLS
-		{ mod->unused_syms, mod->num_unused_syms },
-		{ mod->unused_gpl_syms, mod->num_unused_gpl_syms },
+		{
+		mod->unused_syms, mod->num_unused_syms}, {
+		mod->unused_gpl_syms, mod->num_unused_gpl_syms},
 #endif
 	};
 
@@ -1915,7 +2085,7 @@ static int simplify_symbols(struct module *mod, const struct load_info *info)
 		case SHN_ABS:
 			/* Don't need to do anything */
 			pr_debug("Absolute symbol: 0x%08lx\n",
-			       (long)sym[i].st_value);
+				 (long)sym[i].st_value);
 			break;
 
 		case SHN_UNDEF:
@@ -1932,7 +2102,7 @@ static int simplify_symbols(struct module *mod, const struct load_info *info)
 
 			printk(KERN_WARNING "%s: Unknown symbol %s (err %li)\n",
 			       mod->name, name, PTR_ERR(ksym));
-			ret = PTR_ERR(ksym) ?: -ENOENT;
+			ret = PTR_ERR(ksym) ? : -ENOENT;
 			break;
 
 		default:
@@ -1940,7 +2110,8 @@ static int simplify_symbols(struct module *mod, const struct load_info *info)
 			if (sym[i].st_shndx == info->index.pcpu)
 				secbase = (unsigned long)mod_percpu(mod);
 			else
-				secbase = info->sechdrs[sym[i].st_shndx].sh_addr;
+				secbase =
+				    info->sechdrs[sym[i].st_shndx].sh_addr;
 			sym[i].st_value += secbase;
 			break;
 		}
@@ -1949,21 +2120,19 @@ static int simplify_symbols(struct module *mod, const struct load_info *info)
 	return ret;
 }
 
-int __weak apply_relocate(Elf_Shdr *sechdrs,
+int __weak apply_relocate(Elf_Shdr * sechdrs,
 			  const char *strtab,
 			  unsigned int symindex,
-			  unsigned int relsec,
-			  struct module *me)
+			  unsigned int relsec, struct module *me)
 {
 	pr_err("module %s: REL relocation unsupported\n", me->name);
 	return -ENOEXEC;
 }
 
-int __weak apply_relocate_add(Elf_Shdr *sechdrs,
+int __weak apply_relocate_add(Elf_Shdr * sechdrs,
 			      const char *strtab,
 			      unsigned int symindex,
-			      unsigned int relsec,
-			      struct module *me)
+			      unsigned int relsec, struct module *me)
 {
 	pr_err("module %s: RELA relocation unsupported\n", me->name);
 	return -ENOEXEC;
@@ -2008,12 +2177,12 @@ unsigned int __weak arch_mod_section_prepend(struct module *mod,
 
 /* Update size with this section: return offset. */
 static long get_offset(struct module *mod, unsigned int *size,
-		       Elf_Shdr *sechdr, unsigned int section)
+		       Elf_Shdr * sechdr, unsigned int section)
 {
 	long ret;
 
 	*size += arch_mod_section_prepend(mod, section);
-	ret = ALIGN(*size, sechdr->sh_addralign ?: 1);
+	ret = ALIGN(*size, sechdr->sh_addralign ? : 1);
 	*size = ret + sechdr->sh_size;
 	return ret;
 }
@@ -2028,10 +2197,10 @@ static void layout_sections(struct module *mod, struct load_info *info)
 		/* NOTE: all executable code must be the first section
 		 * in this array; otherwise modify the text_size
 		 * finder in the two loops below */
-		{ SHF_EXECINSTR | SHF_ALLOC, ARCH_SHF_SMALL },
-		{ SHF_ALLOC, SHF_WRITE | ARCH_SHF_SMALL },
-		{ SHF_WRITE | SHF_ALLOC, ARCH_SHF_SMALL },
-		{ ARCH_SHF_SMALL | SHF_ALLOC, 0 }
+		{SHF_EXECINSTR | SHF_ALLOC, ARCH_SHF_SMALL},
+		{SHF_ALLOC, SHF_WRITE | ARCH_SHF_SMALL},
+		{SHF_WRITE | SHF_ALLOC, ARCH_SHF_SMALL},
+		{ARCH_SHF_SMALL | SHF_ALLOC, 0}
 	};
 	unsigned int m, i;
 
@@ -2053,15 +2222,15 @@ static void layout_sections(struct module *mod, struct load_info *info)
 			pr_debug("\t%s\n", sname);
 		}
 		switch (m) {
-		case 0: /* executable */
+		case 0:	/* executable */
 			mod->core_size = debug_align(mod->core_size);
 			mod->core_text_size = mod->core_size;
 			break;
-		case 1: /* RO: text and ro-data */
+		case 1:	/* RO: text and ro-data */
 			mod->core_size = debug_align(mod->core_size);
 			mod->core_ro_size = mod->core_size;
 			break;
-		case 3: /* whole core */
+		case 3:	/* whole core */
 			mod->core_size = debug_align(mod->core_size);
 			break;
 		}
@@ -2083,15 +2252,15 @@ static void layout_sections(struct module *mod, struct load_info *info)
 			pr_debug("\t%s\n", sname);
 		}
 		switch (m) {
-		case 0: /* executable */
+		case 0:	/* executable */
 			mod->init_size = debug_align(mod->init_size);
 			mod->init_text_size = mod->init_size;
 			break;
-		case 1: /* RO: text and ro-data */
+		case 1:	/* RO: text and ro-data */
 			mod->init_size = debug_align(mod->init_size);
 			mod->init_ro_size = mod->init_size;
 			break;
-		case 3: /* whole init */
+		case 3:	/* whole init */
 			mod->init_size = debug_align(mod->init_size);
 			break;
 		}
@@ -2106,7 +2275,7 @@ static void set_license(struct module *mod, const char *license)
 	if (!license_is_gpl_compatible(license)) {
 		if (!test_taint(TAINT_PROPRIETARY_MODULE))
 			printk(KERN_WARNING "%s: module license '%s' taints "
-				"kernel.\n", mod->name, license);
+			       "kernel.\n", mod->name, license);
 		add_taint_module(mod, TAINT_PROPRIETARY_MODULE);
 	}
 }
@@ -2170,11 +2339,13 @@ static void free_modinfo(struct module *mod)
 
 /* lookup symbol in given range of kernel_symbols */
 static const struct kernel_symbol *lookup_symbol(const char *name,
-	const struct kernel_symbol *start,
-	const struct kernel_symbol *stop)
+						 const struct kernel_symbol
+						 *start,
+						 const struct kernel_symbol
+						 *stop)
 {
 	return bsearch(name, start, stop - start,
-			sizeof(struct kernel_symbol), cmp_name);
+		       sizeof(struct kernel_symbol), cmp_name);
 }
 
 static int is_exported(const char *name, unsigned long value,
@@ -2189,7 +2360,7 @@ static int is_exported(const char *name, unsigned long value,
 }
 
 /* As per nm */
-static char elf_type(const Elf_Sym *sym, const struct load_info *info)
+static char elf_type(const Elf_Sym * sym, const struct load_info *info)
 {
 	const Elf_Shdr *sechdrs = info->sechdrs;
 
@@ -2229,14 +2400,13 @@ static char elf_type(const Elf_Sym *sym, const struct load_info *info)
 	return '?';
 }
 
-static bool is_core_symbol(const Elf_Sym *src, const Elf_Shdr *sechdrs,
-                           unsigned int shnum)
+static bool is_core_symbol(const Elf_Sym * src, const Elf_Shdr * sechdrs,
+			   unsigned int shnum)
 {
 	const Elf_Shdr *sec;
 
 	if (src->st_shndx == SHN_UNDEF
-	    || src->st_shndx >= shnum
-	    || !src->st_name)
+	    || src->st_shndx >= shnum || !src->st_name)
 		return false;
 
 	sec = sechdrs + src->st_shndx;
@@ -2281,7 +2451,7 @@ static void layout_symtab(struct module *mod, struct load_info *info)
 		}
 
 	/* Append room for core symbols at end of core part. */
-	info->symoffs = ALIGN(mod->core_size, symsect->sh_addralign ?: 1);
+	info->symoffs = ALIGN(mod->core_size, symsect->sh_addralign ? : 1);
 	info->stroffs = mod->core_size = info->symoffs + ndst * sizeof(Elf_Sym);
 	mod->core_size += strtab_size;
 
@@ -2334,6 +2504,460 @@ static void add_kallsyms(struct module *mod, const struct load_info *info)
 }
 #endif /* CONFIG_KALLSYMS */
 
+#ifdef	TIMA_LKM_AUTH_ENABLED
+
+#ifdef TIMA_ON_QSEE		/* lkmauth for QSEE */
+static int lkmauth(Elf_Ehdr * hdr, int len)
+{
+	int ret = 0;		/* value to be returned for lkmauth */
+	int qsee_ret = 0;	/* value used to capture qsee return state */
+	char *envp[3], *status, *result;
+	char app_name[MAX_APP_NAME_SIZE];
+	lkmauth_req_t *kreq = NULL;
+	lkmauth_rsp_t *krsp = NULL;
+	int req_len = 0, rsp_len = 0;
+
+	mutex_lock(&lkmauth_mutex);
+	pr_warn
+	    ("TIMA: lkmauth--launch the tzapp to check kernel module; module len is %d\n",
+	     len);
+
+	snprintf(app_name, MAX_APP_NAME_SIZE, "%s", "lkmauth");
+
+	if (NULL == qhandle) {
+		/* start the lkmauth tzapp only when it is not loaded. */
+		qsee_ret = qseecom_start_app(&qhandle, app_name, 1024);
+	}
+	if (NULL == qhandle) {
+		/* qhandle is still NULL. It seems we couldn't start lkmauth tzapp. */
+		pr_err("TIMA: lkmauth--cannot get tzapp handle from kernel.\n");
+		ret = -1;	/* lkm authentication failed. */
+		goto lkmauth_ret;	/* leave the function now. */
+	}
+	if (qsee_ret) {
+		/* Another way for lkmauth tzapp loading to fail. */
+		pr_err
+		    ("TIMA: lkmauth--cannot load tzapp from kernel; qsee_ret =  %d.\n",
+		     qsee_ret);
+		qhandle = NULL;	/* Do we have a memory leak this way? */
+		ret = -1;	/* lkm authentication failed. */
+		goto lkmauth_ret;	/* leave the function now. */
+	}
+
+	/* Generate the request cmd to verify hash of ko. 
+	 */
+	kreq = (struct lkmauth_req_s *)qhandle->sbuf;
+	kreq->cmd_id = LKMAUTH_CMD_AUTH;
+	pr_warn("TIMA: lkmauth -- hdr before kreq is : %x\n", (u32) hdr);
+	kreq->module_addr_start = (u32) hdr;
+	kreq->module_len = len;
+
+	req_len = sizeof(lkmauth_req_t);
+	if (req_len & QSEECOM_ALIGN_MASK)
+		req_len = QSEECOM_ALIGN(req_len);
+
+	/* prepare the response buffer */
+	krsp = (struct lkmauth_rsp_s *)(qhandle->sbuf + req_len);
+
+	rsp_len = sizeof(lkmauth_rsp_t);
+	if (rsp_len & QSEECOM_ALIGN_MASK)
+		rsp_len = QSEECOM_ALIGN(rsp_len);
+
+	pr_warn
+	    ("TIMA: lkmauth--send cmd (%s) cmdlen(%d:%d), rsplen(%d:%d) id 0x%08X, \
+                req (0x%08X), rsp(0x%08X), module_start_addr(0x%08X) module_len %d\n",
+	     app_name, sizeof(lkmauth_req_t), req_len, sizeof(lkmauth_rsp_t), rsp_len, kreq->cmd_id, (int)kreq, (int)krsp, kreq->module_addr_start,
+	     kreq->module_len);
+
+	qsee_ret = qseecom_send_command(qhandle, kreq, req_len, krsp, rsp_len);
+
+	if (qsee_ret) {
+		pr_err
+		    ("TIMA: lkmauth--failed to send cmd to qseecom; qsee_ret = %d.\n",
+		     qsee_ret);
+		pr_warn("TIMA: lkmauth--shutting down the tzapp.\n");
+		qsee_ret = qseecom_shutdown_app(&qhandle);
+		if (qsee_ret) {
+			/* Failed to shut down the lkmauth tzapp. What will happen to 
+			 * the qhandle in this case? Can it be used for the next lkmauth 
+			 * invocation?
+			 */
+			pr_err
+			    ("TIMA: lkmauth--failed to shut down the tzapp.\n");
+		} else
+			qhandle = NULL;
+
+		ret = -1;
+		goto lkmauth_ret;
+	}
+
+	/* Parse result */
+	if (krsp->ret == 0) {
+		pr_warn("TIMA: lkmauth--verification succeeded.\n");
+		ret = 0;	/* ret should already be 0 before the assignment. */
+	} else {
+
+		pr_err("TIMA: lkmauth--verification failed %d\n", krsp->ret);
+		ret = -1;
+
+		/* Send a notification through uevent. Note that the lkmauth tzapp 
+		 * should have already raised an alert in TZ Security log. 
+		 */
+		status = kzalloc(16, GFP_KERNEL);
+		if (!status) {
+			pr_err("TIMA: lkmauth--%s kmalloc failed.\n", __func__);
+			goto lkmauth_ret;
+		}
+		snprintf(status, 16, "TIMA_STATUS=%d", ret);
+		envp[0] = status;
+
+		result = kzalloc(256, GFP_KERNEL);
+		if (!result) {
+			pr_err("TIMA: lkmauth--%s kmalloc failed.\n", __func__);
+			kfree(envp[0]);
+			goto lkmauth_ret;
+		}
+		snprintf(result, 256, "TIMA_RESULT=%s",
+			 krsp->result.result_ondemand);
+		pr_warn("TIMA: %s result (%s) \n", krsp->result.result_ondemand,
+			result);
+		envp[1] = result;
+		envp[2] = NULL;
+
+		kobject_uevent_env(&tima_uevent_dev->kobj, KOBJ_CHANGE, envp);
+		kfree(envp[0]);
+		kfree(envp[1]);
+	}
+
+lkmauth_ret:
+	mutex_unlock(&lkmauth_mutex);
+	return ret;
+}
+#endif /* TIMA_ON_QSEE -- lkmauth for QSEE */
+
+#ifdef TIMA_ON_MC20		/* lkmauth for MC 2.0 */
+
+/* read file into the buf, return the file size */
+int read_file_buf(char *filename, void **buf)
+{
+	struct file *f;
+	int file_size = 0;
+	mm_segment_t fs;
+
+	f = filp_open(filename, O_RDONLY, 0);
+	if (!IS_ERR(f)) {
+		// Get current segment descriptor
+		fs = get_fs();
+		// Set segment descriptor associated to kernel space
+		set_fs(get_ds());
+		file_size = f->f_mapping->host->i_size;
+		pr_info("TIMA: lkmauth--File %s has %d bytes.\n", filename,
+			file_size);
+		*buf = vmalloc(file_size);
+		// Read the file
+		f->f_op->read(f, *buf, file_size, &f->f_pos);
+		// Restore segment descriptor
+		set_fs(fs);
+		filp_close(f, NULL);
+	} else {
+		pr_err("TIMA: lkmauth--filp_open error for %s!!.\n", filename);
+	}
+	return file_size;
+}
+
+int send_notification(lkmauth_rsp_t * krsp, int ret)
+{
+	char *envp[3], *status, *result;
+
+	/* Send a notification through uevent. Note that the lkmauth tzapp
+	 * should have already raised an alert in TZ Security log.
+	 */
+	status = kzalloc(16, GFP_KERNEL);
+	if (!status) {
+		pr_err("TIMA: lkmauth--%s kmalloc failed.\n", __func__);
+		return -1;
+	}
+	snprintf(status, 16, "TIMA_STATUS=%d", ret);
+	envp[0] = status;
+
+	result = kzalloc(256, GFP_KERNEL);
+	if (!result) {
+		pr_err("TIMA: lkmauth--%s kmalloc failed.\n", __func__);
+		kfree(envp[0]);
+		return -1;
+	}
+	snprintf(result, 256, "TIMA_RESULT=%s",
+			krsp->result.result_ondemand);
+	pr_warn("TIMA: %s result (%s) \n", krsp->result.result_ondemand,
+			result);
+	envp[1] = result;
+	envp[2] = NULL;
+
+	kobject_uevent_env(&tima_uevent_dev->kobj, KOBJ_CHANGE, envp);
+	kfree(envp[0]);
+	kfree(envp[1]);
+	return 0;
+}
+
+static int lkmauth(Elf_Ehdr * hdr, int len)
+{
+	int ret = RET_LKMAUTH_FAIL;	/* value to be returned for lkmauth */
+	int tl_ret = 0;		/* value used to capture tl return state */
+	lkmauth_hash_t *khashreq = NULL;
+	lkmauth_req_t *kreq = NULL;
+	lkmauth_rsp_t *krsp = NULL;
+	int req_len = 0, rsp_len = 0;
+	enum mc_result mc_ret;
+	struct mc_uuid_t uuid = TL_TIMA_LKMAUTH_UUID;
+	struct mc_uuid_t drv_uuid = TL_DRV_PKM_UUID;
+	struct mc_bulk_map map_info;
+	void *buf;
+	int buf_len;
+
+	mutex_lock(&lkmauth_mutex);
+	pr_warn
+	    ("TIMA: lkmauth--launch the tl to check kernel module; module len is %d\n",
+	     len);
+
+	/* Load the lkmauth tl and handle potential error conditions.
+	 */
+	if (!lkmauth_tl_loaded) {
+		mc_ret = mc_open_device(MC_DEVICE_ID_DEFAULT);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err
+			    ("TIMA: lkmauth--cannot get mobicore handle from kernel. %d\n",
+			     mc_ret);
+			ret = RET_LKMAUTH_FAIL;
+			goto lkmauth_ret;
+		}
+		/* open session for lkmauth trustlet */
+		mc_ret =
+		    mc_malloc_wsm(MC_DEVICE_ID_DEFAULT, 0, sizeof(tciMessage_t),
+				  &tci, 0);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err
+			    ("TIMA: lkmauth--cannot alloc world shared memory.\n");
+			ret = RET_LKMAUTH_FAIL;
+			goto lkmauth_close_device;
+		}
+		memset(&mchandle, 0, sizeof(struct mc_session_handle));
+		mchandle.device_id = MC_DEVICE_ID_DEFAULT;
+		mc_ret =
+		    mc_open_session(&mchandle, &uuid, tci,
+				    sizeof(tciMessage_t));
+		if (mc_ret != MC_DRV_OK) {
+			pr_err
+			    ("TIMA: lkmauth--cannot open mobicore session from kernel. %d\n",
+			     mc_ret);
+			ret = RET_LKMAUTH_FAIL;
+			goto lkmauth_free_wsm;
+		}
+		/* open session for tima driver */
+		mc_ret =
+		    mc_malloc_wsm(MC_DEVICE_ID_DEFAULT, 0, 4096, &drv_tci, 0);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err
+			    ("TIMA: lkmauth--cannot alloc world shared memory for tima driver.\n");
+			ret = RET_LKMAUTH_FAIL;	/* lkm authentication failed. */
+			goto lkmauth_close_session;	/* leave the function now. */
+		}
+		memset(&drv_mchandle, 0, sizeof(struct mc_session_handle));
+		drv_mchandle.device_id = MC_DEVICE_ID_DEFAULT;
+#if 0 // TIMA driver is loaded at mcDriverDaemon
+		mc_ret =
+		    mc_open_session(&drv_mchandle, &drv_uuid, drv_tci, 4096);
+		if (mc_ret != MC_DRV_OK) {
+			pr_info
+			    ("TIMA: lkmauth--cannot open mobicore session from kernel for tima secure driver. %d\n",
+			     mc_ret);
+			ret = RET_LKMAUTH_FAIL;
+			goto lkmauth_free_drv_wsm;
+		}
+#endif
+		lkmauth_tl_loaded = 1;	/* both lkmauth tl and tima secure driver is loaded */
+	}
+
+	if (!lkm_sec_info_loaded) {
+		/* load lkm_sec_info */
+		buf_len = read_file_buf("/system/lkm_sec_info", &buf);
+		if (buf_len == 0) {
+			pr_err
+			    ("TIMA: lkmauth-- cannot allocate buffer for lkm_sec_info\n");
+			ret = RET_LKMAUTH_FAIL;
+			goto lkmauth_ret;
+		}
+
+		/* map lkm_sec_info buf to tl virutal space */
+		mc_ret = mc_map(&mchandle, (void *)buf, buf_len, &map_info);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err
+			    ("TIMA: lkmauth--cannot map lkm_sec_info buf to tl virtual space\n");
+			ret = RET_LKMAUTH_FAIL;
+			vfree(buf);
+			goto lkmauth_ret;
+		}
+
+		/* Generate the request cmd to load lkm_sec_info.
+		 */
+		khashreq = (struct lkmauth_hash_s *)tci;
+		khashreq->cmd_id = CMD_TIMA_LKMAUTH_LOAD_HASH;
+		/* pr_warn("TIMA: lkmauth -- virtual address of lkm_sec_info buffer in tl is : %x\n", (uint32_t)map_info.secure_virt_addr);
+		 */
+		khashreq->hash_buf_start = (uint32_t) map_info.secure_virt_addr;
+		khashreq->hash_buf_len = buf_len;
+		khashreq->ko_num = (buf_len - TIMA_SIGN_LEN) / HASH_SIZE;	/* calculate the the ko number */
+
+		/* prepare the response buffer */
+		krsp = (struct lkmauth_rsp_s *)tci;
+
+		/* Send the command to the tl.
+		 */
+		mc_ret = mc_notify(&mchandle);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err("TIMA: lkmauth--mc_notify failed.\n");
+			ret = RET_LKMAUTH_FAIL;
+			mc_unmap(&mchandle, buf, &map_info);
+			vfree(buf);
+			goto lkmauth_ret;
+		}
+
+		mc_ret = mc_wait_notification(&mchandle, -1);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err("TIMA: lkmauth--wait_notify failed.\n");
+			ret = RET_LKMAUTH_FAIL;
+			mc_unmap(&mchandle, buf, &map_info);
+			vfree(buf);
+			goto lkmauth_ret;
+		}
+		pr_warn("TIMA: lkmauth--wait_notify completed.\n");
+
+		/* Process potential error conditions for the tl response.
+		 */
+		mc_ret = mc_unmap(&mchandle, buf, &map_info);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err
+			    ("TIMA: lkmauth--cannot unmap lkm_sec_info buf\n");
+			ret = RET_LKMAUTH_FAIL;
+			vfree(buf);
+			goto lkmauth_ret;
+		}
+
+		vfree(buf);
+
+		/* Parse the tl response for loading lkm_sec_info.
+		 */
+		if (krsp->ret == RET_TL_TIMA_LKMAUTH_OK) {
+			pr_info
+			    ("TIMA: lkmauth--lkm_sec_info sucessfully loaded\n");
+			ret = RET_LKMAUTH_SUCCESS;
+			lkm_sec_info_loaded = 1;
+		} else if (krsp->ret == RET_TL_TIMA_LKMAUTH_HASH_LOADED) {
+			pr_info("TIMA: lkmauth--lkm_sec_info already loaded\n");
+			ret = RET_LKMAUTH_FAIL;
+			lkm_sec_info_loaded = 1;
+		} else {
+			pr_err("TIMA: lkmauth--lkm_sec_info load error (%d)\n",
+			       krsp->ret);
+			ret = RET_LKMAUTH_FAIL;
+			send_notification(krsp, ret);
+			goto lkmauth_ret;
+		}
+	}
+
+	/* map ko buf to tl virtual space */
+	mc_ret = mc_map(&mchandle, (void *)hdr, len, &map_info);
+	if (mc_ret != MC_DRV_OK) {
+		pr_err
+		    ("TIMA: lkmauth--cannot map ko buf to tl virtual space\n");
+		ret = RET_LKMAUTH_FAIL;
+		goto lkmauth_ret;
+	}
+
+	/* Generate the request cmd to verify hash of ko.
+	 */
+	kreq = (struct lkmauth_req_s *)tci;
+	kreq->cmd_id = CMD_TIMA_LKMAUTH_VERIFY_MODULE;
+	/* pr_warn("TIMA: lkmauth -- virtual address of ko buffer in tl is : %x\n", (uint32_t)map_info.secure_virt_addr);
+	 */
+	kreq->module_addr_start = (uint32_t) map_info.secure_virt_addr;
+	kreq->module_len = len;
+
+	/* prepare the response buffer */
+	krsp = (struct lkmauth_rsp_s *)tci;
+
+	/* Send the command to the tl.
+	 */
+	mc_ret = mc_notify(&mchandle);
+	if (mc_ret != MC_DRV_OK) {
+		pr_err("TIMA: lkmauth--mc_notify failed.\n");
+		ret = RET_LKMAUTH_FAIL;
+		mc_unmap(&mchandle, (void *)hdr, &map_info);
+		goto lkmauth_ret;
+	}
+
+	mc_ret = mc_wait_notification(&mchandle, -1);
+	if (mc_ret != MC_DRV_OK) {
+		pr_err("TIMA: lkmauth--wait_notify failed.\n");
+		ret = RET_LKMAUTH_FAIL;
+		mc_unmap(&mchandle, (void *)hdr, &map_info);
+		goto lkmauth_ret;
+	}
+	pr_warn("TIMA: lkmauth--wait_notify completed.\n");
+
+	mc_ret = mc_unmap(&mchandle, (void *)hdr, &map_info);
+	if (mc_ret != MC_DRV_OK) {
+		pr_err("TIMA: lkmauth--cannot unmap ko memory\n");
+	}
+
+	/* Parse the tl response.
+	 */
+	if (krsp->ret == 0) {
+		pr_warn("TIMA: lkmauth--verification succeeded.\n");
+		ret = RET_LKMAUTH_SUCCESS;	/* ret should already be 0 before the assignment. */
+	} else {
+
+		pr_err("TIMA: lkmauth--verification failed %d\n", krsp->ret);
+		ret = RET_LKMAUTH_FAIL;
+		send_notification(krsp, ret);
+	}
+	goto lkmauth_ret;
+
+lkmauth_close_drv_session:
+#if 0 // TIMA driver is loaded at mcDriverDaemon
+	if (mc_close_session(&drv_mchandle) != MC_DRV_OK) {
+		pr_err("TIMA: lkmauth--failed to close mobicore session.\n");
+	}
+#endif
+
+lkmauth_free_drv_wsm:
+	if (mc_free_wsm(MC_DEVICE_ID_DEFAULT, drv_tci) != MC_DRV_OK) {
+		pr_err("TIMA: lkmauth--failed to free driver wsm.\n");
+	}
+
+lkmauth_close_session:
+	if (mc_close_session(&mchandle) != MC_DRV_OK) {
+		pr_err("TIMA: lkmauth--failed to close mobicore session.\n");
+	}
+
+lkmauth_free_wsm:
+	if (mc_free_wsm(MC_DEVICE_ID_DEFAULT, tci) != MC_DRV_OK) {
+		pr_err("TIMA: lkmauth--failed to free wsm.\n");
+	}
+
+lkmauth_close_device:
+	if (mc_close_device(MC_DEVICE_ID_DEFAULT) != MC_DRV_OK) {
+		pr_err
+		    ("TIMA: lkmauth--failed to shutdown mobicore instance.\n");
+	}
+
+lkmauth_ret:
+	mutex_unlock(&lkmauth_mutex);
+	return ret;
+}
+#endif /* End TIMA_ON_MC20 -- lkmauth for MC 2.0 */
+
+#endif /* End TIMA_LKM_AUTH_ENABLED */
+
 static void dynamic_debug_setup(struct _ddebug *debug, unsigned int num)
 {
 	if (!debug)
@@ -2341,7 +2965,7 @@ static void dynamic_debug_setup(struct _ddebug *debug, unsigned int num)
 #ifdef CONFIG_DYNAMIC_DEBUG
 	if (ddebug_add_module(debug, num, debug->modname))
 		printk(KERN_ERR "dynamic debug error adding module: %s\n",
-					debug->modname);
+		       debug->modname);
 #endif
 }
 
@@ -2351,7 +2975,7 @@ static void dynamic_debug_remove(struct _ddebug *debug)
 		ddebug_remove_module(debug->modname);
 }
 
-void * __weak module_alloc(unsigned long size)
+void *__weak module_alloc(unsigned long size)
 {
 	return size == 0 ? NULL : vmalloc_exec(size);
 }
@@ -2401,8 +3025,8 @@ static inline void kmemleak_load_module(const struct module *mod,
 
 /* Sets info->hdr and info->len. */
 static int copy_and_check(struct load_info *info,
-			  const void __user *umod, unsigned long len,
-			  const char __user *uargs)
+			  const void __user * umod, unsigned long len,
+			  const char __user * uargs)
 {
 	int err;
 	Elf_Ehdr *hdr;
@@ -2422,8 +3046,7 @@ static int copy_and_check(struct load_info *info,
 	/* Sanity checks against insmoding binaries or wrong arch,
 	   weird elf version */
 	if (memcmp(hdr->e_ident, ELFMAG, SELFMAG) != 0
-	    || hdr->e_type != ET_REL
-	    || !elf_check_arch(hdr)
+	    || hdr->e_type != ET_REL || !elf_check_arch(hdr)
 	    || hdr->e_shentsize != sizeof(Elf_Shdr)) {
 		err = -ENOEXEC;
 		goto free_hdr;
@@ -2433,6 +3056,16 @@ static int copy_and_check(struct load_info *info,
 		err = -ENOEXEC;
 		goto free_hdr;
 	}
+#ifdef TIMA_LKM_AUTH_ENABLED
+	if (lkmauth_bootmode != BOOTMODE_RECOVERY &&
+	    lkmauth(hdr, len) != RET_LKMAUTH_SUCCESS) {
+		pr_err
+		    ("TIMA: lkmauth--unable to load kernel module; module len is %lu.\n",
+		     len);
+		err = -ENOEXEC;
+		goto free_hdr;
+	}
+#endif
 
 	info->hdr = hdr;
 	info->len = len;
@@ -2466,11 +3099,11 @@ static int rewrite_section_headers(struct load_info *info)
 
 		/* Mark all sections sh_addr with their address in the
 		   temporary image. */
-		shdr->sh_addr = (size_t)info->hdr + shdr->sh_offset;
+		shdr->sh_addr = (size_t) info->hdr + shdr->sh_offset;
 
 #ifndef CONFIG_MODULE_UNLOAD
 		/* Don't load .exit sections */
-		if (strstarts(info->secstrings+shdr->sh_name, ".exit"))
+		if (strstarts(info->secstrings + shdr->sh_name, ".exit"))
 			shdr->sh_flags &= ~(unsigned long)SHF_ALLOC;
 #endif
 	}
@@ -2500,7 +3133,7 @@ static struct module *setup_load_info(struct load_info *info)
 	/* Set up the convenience variables */
 	info->sechdrs = (void *)info->hdr + info->hdr->e_shoff;
 	info->secstrings = (void *)info->hdr
-		+ info->sechdrs[info->hdr->e_shstrndx].sh_offset;
+	    + info->sechdrs[info->hdr->e_shstrndx].sh_offset;
 
 	err = rewrite_section_headers(info);
 	if (err)
@@ -2512,7 +3145,7 @@ static struct module *setup_load_info(struct load_info *info)
 			info->index.sym = i;
 			info->index.str = info->sechdrs[i].sh_link;
 			info->strtab = (char *)info->hdr
-				+ info->sechdrs[info->index.str].sh_offset;
+			    + info->sechdrs[info->index.str].sh_offset;
 			break;
 		}
 	}
@@ -2574,8 +3207,7 @@ static int check_modinfo(struct module *mod, struct load_info *info)
 
 static void find_module_sections(struct module *mod, struct load_info *info)
 {
-	mod->kp = section_objs(info, "__param",
-			       sizeof(*mod->kp), &mod->num_kp);
+	mod->kp = section_objs(info, "__param", sizeof(*mod->kp), &mod->num_kp);
 	mod->syms = section_objs(info, "__ksymtab",
 				 sizeof(*mod->syms), &mod->num_syms);
 	mod->crcs = section_addr(info, "__kcrctab");
@@ -2611,8 +3243,8 @@ static void find_module_sections(struct module *mod, struct load_info *info)
 #endif
 #ifdef HAVE_JUMP_LABEL
 	mod->jump_entries = section_objs(info, "__jump_table",
-					sizeof(*mod->jump_entries),
-					&mod->num_jump_entries);
+					 sizeof(*mod->jump_entries),
+					 &mod->num_jump_entries);
 #endif
 #ifdef CONFIG_EVENT_TRACING
 	mod->trace_events = section_objs(info, "_ftrace_events",
@@ -2627,8 +3259,10 @@ static void find_module_sections(struct module *mod, struct load_info *info)
 #endif
 #ifdef CONFIG_TRACING
 	mod->trace_bprintk_fmt_start = section_objs(info, "__trace_printk_fmt",
-					 sizeof(*mod->trace_bprintk_fmt_start),
-					 &mod->num_trace_bprintk_fmt);
+						    sizeof(*mod->
+							   trace_bprintk_fmt_start),
+						    &mod->
+						    num_trace_bprintk_fmt);
 	/*
 	 * This section contains pointers to allocated objects in the trace
 	 * code and not scanning it leads to false positives.
@@ -2700,7 +3334,7 @@ static int move_module(struct module *mod, struct load_info *info)
 
 		if (shdr->sh_entsize & INIT_OFFSET_MASK)
 			dest = mod->module_init
-				+ (shdr->sh_entsize & ~INIT_OFFSET_MASK);
+			    + (shdr->sh_entsize & ~INIT_OFFSET_MASK);
 		else
 			dest = mod->module_core + shdr->sh_entsize;
 
@@ -2737,7 +3371,7 @@ static int check_module_license_and_versions(struct module *mod)
 	    || (mod->num_unused_syms && !mod->unused_crcs)
 	    || (mod->num_unused_gpl_syms && !mod->unused_gpl_crcs)
 #endif
-		) {
+	    ) {
 		return try_to_force_load(mod,
 					 "no versions for exported symbols");
 	}
@@ -2768,10 +3402,9 @@ static void flush_module_icache(const struct module *mod)
 	set_fs(old_fs);
 }
 
-int __weak module_frob_arch_sections(Elf_Ehdr *hdr,
-				     Elf_Shdr *sechdrs,
-				     char *secstrings,
-				     struct module *mod)
+int __weak module_frob_arch_sections(Elf_Ehdr * hdr,
+				     Elf_Shdr * sechdrs,
+				     char *secstrings, struct module *mod)
 {
 	return 0;
 }
@@ -2837,9 +3470,8 @@ static void module_deallocate(struct module *mod, struct load_info *info)
 	module_free(mod, mod->module_core);
 }
 
-int __weak module_finalize(const Elf_Ehdr *hdr,
-			   const Elf_Shdr *sechdrs,
-			   struct module *me)
+int __weak module_finalize(const Elf_Ehdr * hdr,
+			   const Elf_Shdr * sechdrs, struct module *me)
 {
 	return 0;
 }
@@ -2862,16 +3494,14 @@ static int post_relocation(struct module *mod, const struct load_info *info)
 
 /* Allocate and load the module: note that size of section 0 is always
    zero, and we rely on this for optional sections. */
-static struct module *load_module(void __user *umod,
-				  unsigned long len,
-				  const char __user *uargs)
+static struct module *load_module(void __user * umod,
+				  unsigned long len, const char __user * uargs)
 {
 	struct load_info info = { NULL, };
 	struct module *mod;
 	long err;
 
-	pr_debug("load_module: umod=%p, len=%lu, uargs=%p\n",
-	       umod, len, uargs);
+	pr_debug("load_module: umod=%p, len=%lu, uargs=%p\n", umod, len, uargs);
 
 	/* Copy in the blobs from userspace, check they are vaguely sane. */
 	err = copy_and_check(&info, umod, len, uargs);
@@ -2969,27 +3599,27 @@ static struct module *load_module(void __user *umod,
 	trace_module_load(mod);
 	return mod;
 
- unlink:
+unlink:
 	mutex_lock(&module_mutex);
 	/* Unlink carefully: kallsyms could be walking list. */
 	list_del_rcu(&mod->list);
 	module_bug_cleanup(mod);
 
- ddebug:
+ddebug:
 	dynamic_debug_remove(info.debug);
- unlock:
+unlock:
 	mutex_unlock(&module_mutex);
 	synchronize_sched();
 	kfree(mod->args);
- free_arch_cleanup:
+free_arch_cleanup:
 	module_arch_cleanup(mod);
- free_modinfo:
+free_modinfo:
 	free_modinfo(mod);
- free_unload:
+free_unload:
 	module_unload_free(mod);
- free_module:
+free_module:
 	module_deallocate(mod, &info);
- free_copy:
+free_copy:
 	free_copy(&info);
 	return ERR_PTR(err);
 }
@@ -3001,10 +3631,80 @@ static void do_mod_ctors(struct module *mod)
 	unsigned long i;
 
 	for (i = 0; i < mod->num_ctors; i++)
-		mod->ctors[i]();
+		mod->ctors[i] ();
 #endif
 }
 
+#ifdef	TIMA_LKM_SET_PAGE_ATTRIB
+void tima_mod_send_smc_instruction(unsigned int *vatext, unsigned int *vadata,
+				   unsigned int text_count,
+				   unsigned int data_count)
+{
+	unsigned long cmd_id = TIMA_PAC_CMD_ID;
+	/*Call SMC instruction */
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+	__asm__ __volatile__(".arch_extension sec\n");
+#endif
+	__asm__ __volatile__("stmfd  sp!,{r0-r4,r11}\n"
+			     "mov    r11, r0\n"
+			     "mov    r0, %0\n"
+			     "mov    r1, %1\n"
+			     "mov    r2, %2\n"
+			     "mov    r3, %3\n"
+			     "mov    r4, %4\n"
+			     "smc    #11\n"
+			     "mov    r6, #0\n"
+			     "pop    {r0-r4,r11}\n"
+			     "mcr    p15, 0, r6, c8, c3, 0\n"
+			     "dsb\n"
+			     "isb\n"::"r"(cmd_id), "r"(vatext), "r"(text_count),
+			     "r"(vadata), "r"(data_count):"r0", "r1", "r2",
+			     "r3", "r4", "r11", "cc");
+
+}
+
+/**
+ *    tima_mod_page_change_access  - Wrapper function to change access control permissions of pages 
+ *
+ *     It sends code and data pages to secure side to  make code pages readonly and data pages non executable
+ * 
+ */
+
+void tima_mod_page_change_access(struct module *mod)
+{
+	unsigned int *vatext, *vadata;	/* base virtual address of text and data regions */
+	unsigned int text_count, data_count;	/* Number of text and data pages present in core section */
+
+	/*Lets first pickup core section */
+	vatext = mod->module_core;
+	vadata = (int *)((char *)(mod->module_core) + mod->core_ro_size);
+	text_count = ((char *)vadata - (char *)vatext);
+	data_count = debug_align(mod->core_size) - text_count;
+	text_count = text_count / PAGE_SIZE;
+	data_count = data_count / PAGE_SIZE;
+
+	/*Should be atleast a page */
+	if (!text_count)
+		text_count = 1;
+	if (!data_count)
+		data_count = 1;
+
+	/* Change permissive bits for core section */
+	tima_mod_send_smc_instruction(vatext, vadata, text_count, data_count);
+
+	/*Lets pickup init section */
+	vatext = mod->module_init;
+	vadata = (int *)((char *)(mod->module_init) + mod->init_ro_size);
+	text_count = ((char *)vadata - (char *)vatext);
+	data_count = debug_align(mod->init_size) - text_count;
+	text_count = text_count / PAGE_SIZE;
+	data_count = data_count / PAGE_SIZE;
+
+	/* Change permissive bits for init section */
+	tima_mod_send_smc_instruction(vatext, vadata, text_count, data_count);
+}
+
+#endif
 /* This is where the real work happens */
 SYSCALL_DEFINE3(init_module, void __user *, umod,
 		unsigned long, len, const char __user *, uargs)
@@ -3022,19 +3722,21 @@ SYSCALL_DEFINE3(init_module, void __user *, umod,
 		return PTR_ERR(mod);
 
 	blocking_notifier_call_chain(&module_notify_list,
-			MODULE_STATE_COMING, mod);
+				     MODULE_STATE_COMING, mod);
+
+#ifdef	TIMA_LKM_SET_PAGE_ATTRIB
+	tima_mod_page_change_access(mod);
+#endif
 
 	/* Set RO and NX regions for core */
 	set_section_ro_nx(mod->module_core,
-				mod->core_text_size,
-				mod->core_ro_size,
-				mod->core_size);
+			  mod->core_text_size,
+			  mod->core_ro_size, mod->core_size);
 
 	/* Set RO and NX regions for init */
 	set_section_ro_nx(mod->module_init,
-				mod->init_text_size,
-				mod->init_ro_size,
-				mod->init_size);
+			  mod->init_text_size,
+			  mod->init_ro_size, mod->init_size);
 
 	do_mod_ctors(mod);
 	/* Start the module */
@@ -3042,7 +3744,7 @@ SYSCALL_DEFINE3(init_module, void __user *, umod,
 		ret = do_one_initcall(mod->init);
 	if (ret < 0) {
 		/* Init routine failed: abort.  Try to protect us from
-                   buggy refcounters. */
+		   buggy refcounters. */
 		mod->state = MODULE_STATE_GOING;
 		synchronize_sched();
 		module_put(mod);
@@ -3054,10 +3756,9 @@ SYSCALL_DEFINE3(init_module, void __user *, umod,
 	}
 	if (ret > 0) {
 		printk(KERN_WARNING
-"%s: '%s'->init suspiciously returned %d, it should follow 0/-E convention\n"
-"%s: loading module anyway...\n",
-		       __func__, mod->name, ret,
-		       __func__);
+		       "%s: '%s'->init suspiciously returned %d, it should follow 0/-E convention\n"
+		       "%s: loading module anyway...\n",
+		       __func__, mod->name, ret, __func__);
 		dump_stack();
 	}
 
@@ -3103,22 +3804,21 @@ static inline int within(unsigned long addr, void *start, unsigned long size)
 static inline int is_arm_mapping_symbol(const char *str)
 {
 	return str[0] == '$' && strchr("atd", str[1])
-	       && (str[2] == '\0' || str[2] == '.');
+	    && (str[2] == '\0' || str[2] == '.');
 }
 
 static const char *get_ksymbol(struct module *mod,
 			       unsigned long addr,
-			       unsigned long *size,
-			       unsigned long *offset)
+			       unsigned long *size, unsigned long *offset)
 {
 	unsigned int i, best = 0;
 	unsigned long nextval;
 
 	/* At worse, next value is at end of module */
 	if (within_module_init(addr, mod))
-		nextval = (unsigned long)mod->module_init+mod->init_text_size;
+		nextval = (unsigned long)mod->module_init + mod->init_text_size;
 	else
-		nextval = (unsigned long)mod->module_core+mod->core_text_size;
+		nextval = (unsigned long)mod->module_core + mod->core_text_size;
 
 	/* Scan for closest preceding symbol, and next symbol. (ELF
 	   starts real symbols at 1). */
@@ -3131,12 +3831,14 @@ static const char *get_ksymbol(struct module *mod,
 		if (mod->symtab[i].st_value <= addr
 		    && mod->symtab[i].st_value > mod->symtab[best].st_value
 		    && *(mod->strtab + mod->symtab[i].st_name) != '\0'
-		    && !is_arm_mapping_symbol(mod->strtab + mod->symtab[i].st_name))
+		    && !is_arm_mapping_symbol(mod->strtab +
+					      mod->symtab[i].st_name))
 			best = i;
 		if (mod->symtab[i].st_value > addr
 		    && mod->symtab[i].st_value < nextval
 		    && *(mod->strtab + mod->symtab[i].st_name) != '\0'
-		    && !is_arm_mapping_symbol(mod->strtab + mod->symtab[i].st_name))
+		    && !is_arm_mapping_symbol(mod->strtab +
+					      mod->symtab[i].st_name))
 			nextval = mod->symtab[i].st_value;
 	}
 
@@ -3153,10 +3855,9 @@ static const char *get_ksymbol(struct module *mod,
 /* For kallsyms to ask for address resolution.  NULL means not found.  Careful
  * not to lock to avoid deadlock on oopses, simply disable preemption. */
 const char *module_address_lookup(unsigned long addr,
-			    unsigned long *size,
-			    unsigned long *offset,
-			    char **modname,
-			    char *namebuf)
+				  unsigned long *size,
+				  unsigned long *offset,
+				  char **modname, char *namebuf)
 {
 	struct module *mod;
 	const char *ret = NULL;
@@ -3204,7 +3905,7 @@ out:
 }
 
 int lookup_module_symbol_attrs(unsigned long addr, unsigned long *size,
-			unsigned long *offset, char *modname, char *name)
+			       unsigned long *offset, char *modname, char *name)
 {
 	struct module *mod;
 
@@ -3231,7 +3932,7 @@ out:
 }
 
 int module_get_kallsym(unsigned int symnum, unsigned long *value, char *type,
-			char *name, char *module_name, int *exported)
+		       char *name, char *module_name, int *exported)
 {
 	struct module *mod;
 
@@ -3258,7 +3959,7 @@ static unsigned long mod_find_symname(struct module *mod, const char *name)
 	unsigned int i;
 
 	for (i = 0; i < mod->num_symtab; i++)
-		if (strcmp(name, mod->strtab+mod->symtab[i].st_name) == 0 &&
+		if (strcmp(name, mod->strtab + mod->symtab[i].st_name) == 0 &&
 		    mod->symtab[i].st_info != 'U')
 			return mod->symtab[i].st_value;
 	return 0;
@@ -3276,19 +3977,19 @@ unsigned long module_kallsyms_lookup_name(const char *name)
 	if ((colon = strchr(name, ':')) != NULL) {
 		*colon = '\0';
 		if ((mod = find_module(name)) != NULL)
-			ret = mod_find_symname(mod, colon+1);
+			ret = mod_find_symname(mod, colon + 1);
 		*colon = ':';
 	} else {
 		list_for_each_entry_rcu(mod, &modules, list)
-			if ((ret = mod_find_symname(mod, name)) != 0)
-				break;
+		    if ((ret = mod_find_symname(mod, name)) != 0)
+			break;
 	}
 	preempt_enable();
 	return ret;
 }
 
-int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
-					     struct module *, unsigned long),
+int module_kallsyms_on_each_symbol(int (*fn) (void *, const char *,
+					      struct module *, unsigned long),
 				   void *data)
 {
 	struct module *mod;
@@ -3331,13 +4032,13 @@ static char *module_flags(struct module *mod, char *buf)
 
 #ifdef CONFIG_PROC_FS
 /* Called by the /proc file system to return a list of modules. */
-static void *m_start(struct seq_file *m, loff_t *pos)
+static void *m_start(struct seq_file *m, loff_t * pos)
 {
 	mutex_lock(&module_mutex);
 	return seq_list_start(&modules, *pos);
 }
 
-static void *m_next(struct seq_file *m, void *p, loff_t *pos)
+static void *m_next(struct seq_file *m, void *p, loff_t * pos)
 {
 	return seq_list_next(p, &modules, pos);
 }
@@ -3352,15 +4053,13 @@ static int m_show(struct seq_file *m, void *p)
 	struct module *mod = list_entry(p, struct module, list);
 	char buf[8];
 
-	seq_printf(m, "%s %u",
-		   mod->name, mod->init_size + mod->core_size);
+	seq_printf(m, "%s %u", mod->name, mod->init_size + mod->core_size);
 	print_unload_info(m, mod);
 
 	/* Informative for users. */
 	seq_printf(m, " %s",
-		   mod->state == MODULE_STATE_GOING ? "Unloading":
-		   mod->state == MODULE_STATE_COMING ? "Loading":
-		   "Live");
+		   mod->state == MODULE_STATE_GOING ? "Unloading" :
+		   mod->state == MODULE_STATE_COMING ? "Loading" : "Live");
 	/* Used by oprofile and other similar tools. */
 	seq_printf(m, " 0x%pK", mod->module_core);
 
@@ -3378,10 +4077,10 @@ static int m_show(struct seq_file *m, void *p)
    of depends or -.
 */
 static const struct seq_operations modules_op = {
-	.start	= m_start,
-	.next	= m_next,
-	.stop	= m_stop,
-	.show	= m_show
+	.start = m_start,
+	.next = m_next,
+	.stop = m_stop,
+	.show = m_show
 };
 
 static int modules_open(struct inode *inode, struct file *file)
@@ -3390,10 +4089,10 @@ static int modules_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations proc_modules_operations = {
-	.open		= modules_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.open = modules_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = seq_release,
 };
 
 static int __init proc_modules_init(void)
@@ -3401,6 +4100,7 @@ static int __init proc_modules_init(void)
 	proc_create("modules", 0, NULL, &proc_modules_operations);
 	return 0;
 }
+
 module_init(proc_modules_init);
 #endif
 
@@ -3416,8 +4116,7 @@ const struct exception_table_entry *search_module_extables(unsigned long addr)
 			continue;
 
 		e = search_extable(mod->extable,
-				   mod->extable + mod->num_exentries - 1,
-				   addr);
+				   mod->extable + mod->num_exentries - 1, addr);
 		if (e)
 			break;
 	}
@@ -3461,11 +4160,12 @@ struct module *__module_address(unsigned long addr)
 		return NULL;
 
 	list_for_each_entry_rcu(mod, &modules, list)
-		if (within_module_core(addr, mod)
-		    || within_module_init(addr, mod))
-			return mod;
+	    if (within_module_core(addr, mod)
+		|| within_module_init(addr, mod))
+		return mod;
 	return NULL;
 }
+
 EXPORT_SYMBOL_GPL(__module_address);
 
 /*
@@ -3505,6 +4205,7 @@ struct module *__module_text_address(unsigned long addr)
 	}
 	return mod;
 }
+
 EXPORT_SYMBOL_GPL(__module_text_address);
 
 /* Don't grab lock, we're oopsing. */
@@ -3517,7 +4218,7 @@ void print_modules(void)
 	/* Most callers should already have preempt disabled, but make sure */
 	preempt_disable();
 	list_for_each_entry_rcu(mod, &modules, list)
-		printk(" %s%s", mod->name, module_flags(mod, buf));
+	    printk(" %s%s", mod->name, module_flags(mod, buf));
 	preempt_enable();
 	if (last_unloaded_module[0])
 		printk(" [last unloaded: %s]", last_unloaded_module);
@@ -3530,9 +4231,9 @@ void print_modules(void)
 void module_layout(struct module *mod,
 		   struct modversion_info *ver,
 		   struct kernel_param *kp,
-		   struct kernel_symbol *ks,
-		   struct tracepoint * const *tp)
+		   struct kernel_symbol *ks, struct tracepoint *const *tp)
 {
 }
+
 EXPORT_SYMBOL(module_layout);
 #endif

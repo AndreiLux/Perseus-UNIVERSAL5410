@@ -397,7 +397,7 @@ static ssize_t lp5562_store_blink(struct device *dev,
 	on = min_t(unsigned int, on, MAX_BLINK_TIME);
 	off = min_t(unsigned int, off, MAX_BLINK_TIME);
 
-	if (!rgb || !on || !off)
+	if (!rgb || !on)
 		return len;
 
 	mutex_lock(&chip->lock);

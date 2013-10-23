@@ -1505,7 +1505,7 @@ PVRSRV_ERROR PDumpPDDevPAddrKM(PVRSRV_KERNEL_MEM_INFO *psMemInfo,
 
 	eErr = PDumpOSBufprintf(hScript,
 			ui32MaxLenScript,
-			"-- LDB :%s:PA_0x" UINTPTR_FMT DEVPADDR_FMT ":0x%08X 0x%08lX 0x%08X %s\r\n",
+			"-- LDB :%s:PA_0x" UINTPTR_FMT DEVPADDR_FMT ":0x%08X 0x%08" SIZE_T_FMT_LEN "X 0x%08X %s\r\n",
 			psMMUAttrib->sDevId.pszPDumpDevName,
 			(IMG_UINTPTR_T)hUniqueTag1,
 			sDevPAddrTmp.uiAddr,

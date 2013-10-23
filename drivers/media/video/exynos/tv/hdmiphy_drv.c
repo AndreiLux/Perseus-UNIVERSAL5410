@@ -97,6 +97,7 @@ static int hdmiphy_enable_oscpad(struct i2c_client *client, int on,
 
 static int hdmiphy_s_power(struct v4l2_subdev *sd, int on)
 {
+	int ret;
 	u8 recv_buffer[32];
 	u8 buffer[2];
 	struct i2c_client *client = v4l2_get_subdevdata(sd);

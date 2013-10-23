@@ -2598,14 +2598,14 @@ static void ProcSeqShowMemArea(struct seq_file *sfile,void* el)
 
         seq_printf(sfile,
 #if !defined(DEBUG_LINUX_XML_PROC_FILES)
-                       "%p       %-24s %p " CPUPADDR_FMT " %u %-5u %08x=(%s)\n",
+                       "%p       %-24s %p " CPUPADDR_FMT " %" SIZE_T_FMT_LEN "u %-5u %08x=(%s)\n",
 #else
                        "<linux_mem_area>\n"
                        "\t<pointer>%p</pointer>\n"
                        "\t<type>%s</type>\n"
                        "\t<cpu_virtual>%p</cpu_virtual>\n"
                        "\t<cpu_physical>" CPUPADDR_FMT "</cpu_physical>\n"
-                       "\t<bytes>%ld</bytes>\n"
+                       "\t<bytes>%" SIZE_T_FMT_LEN "d</bytes>\n"
                        "\t<pid>%u</pid>\n"
                        "\t<flags>%08x</flags>\n"
                        "\t<flags_string>%s</flags_string>\n"
@@ -2846,13 +2846,13 @@ static void ProcSeqShowMemoryRecords(struct seq_file *sfile,void* el)
     {
 		seq_printf(sfile,
 #if !defined(DEBUG_LINUX_XML_PROC_FILES)
-                           "%-16s %p " CPUPADDR_FMT " %u %-5d %-10s %s:%d\n",
+                           "%-16s %p " CPUPADDR_FMT " %" SIZE_T_FMT_LEN "u %-5d %-10s %s:%d\n",
 #else
                            "<allocation>\n"
                            "\t<type>%s</type>\n"
                            "\t<cpu_virtual>%p</cpu_virtual>\n"
                            "\t<cpu_physical>" CPUPADDR_FMT "</cpu_physical>\n"
-                           "\t<bytes>%u</bytes>\n"
+                           "\t<bytes>%" SIZE_T_FMT_LEN "u</bytes>\n"
                            "\t<pid>%d</pid>\n"
                            "\t<private>%s</private>\n"
                            "\t<filename>%s</filename>\n"
@@ -2872,13 +2872,13 @@ static void ProcSeqShowMemoryRecords(struct seq_file *sfile,void* el)
     {
 		seq_printf(sfile,
 #if !defined(DEBUG_LINUX_XML_PROC_FILES)
-                           "%-16s %p " CPUPADDR_FMT " %u %-5d %-10s %s:%d\n",
+                           "%-16s %p " CPUPADDR_FMT " %" SIZE_T_FMT_LEN "u %-5d %-10s %s:%d\n",
 #else
                            "<allocation>\n"
                            "\t<type>%s</type>\n"
                            "\t<cpu_virtual>%p</cpu_virtual>\n"
                            "\t<cpu_physical>" CPUPADDR_FMT "</cpu_physical>\n"
-                           "\t<bytes>%u</bytes>\n"
+                           "\t<bytes>%" SIZE_T_FMT_LEN "u</bytes>\n"
                            "\t<pid>%d</pid>\n"
                            "\t<private>%s</private>\n"
                            "\t<filename>%s</filename>\n"
@@ -2978,7 +2978,7 @@ static IMG_VOID LinuxMMCleanup_MemAreas_ForEachCb(DEBUG_LINUX_MEM_AREA_REC *psCu
 	LinuxMemArea *psLinuxMemArea;
 
 	psLinuxMemArea = psCurrentRecord->psLinuxMemArea;
-	PVR_DPF((PVR_DBG_ERROR, "%s: BUG!: Cleaning up Linux memory area (%p), type=%s, size=%d bytes",
+	PVR_DPF((PVR_DBG_ERROR, "%s: BUG!: Cleaning up Linux memory area (%p), type=%s, size=%"SIZE_T_FMT_LEN"d bytes",
 				__FUNCTION__,
 				psCurrentRecord->psLinuxMemArea,
 				LinuxMemAreaTypeToString(psCurrentRecord->psLinuxMemArea->eAreaType),

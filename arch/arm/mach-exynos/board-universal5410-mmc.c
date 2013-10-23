@@ -608,6 +608,13 @@ void __init exynos5_universal5410_mmc_init(void)
   }
 #endif
 
+#if defined(CONFIG_MACH_V1)
+	if (system_rev >= 3) {
+		universal5410_dwmci1_pdata.sdr_timing = 0x01020000;
+		universal5410_dwmci1_pdata.ddr_timing = 0x01020000;
+	}
+#endif
+
 	exynos_dwmci_set_platdata(&universal5410_dwmci0_pdata, 0);
 	exynos_dwmci_set_platdata(&universal5410_dwmci1_pdata, 1);
 	exynos_dwmci_set_platdata(&universal5410_dwmci2_pdata, 2);

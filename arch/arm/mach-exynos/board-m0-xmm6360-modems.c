@@ -31,6 +31,10 @@
 #include <mach/sec_modem.h>
 #include <linux/io.h>
 #include <mach/map.h>
+#include <mach/regs-pmu.h>
+#include <mach/regs-usb-phy.h>
+
+#define EHCI_REG_DUMP
 
 /* umts target platform data */
 static struct modem_io_t umts_io_devices[] = {
@@ -128,8 +132,7 @@ static int umts_link_ldo_enble(bool enable)
 	return 0;
 }
 
-#ifdef EHCI_REG_DUMP
-struct dump_ehci_regs {
+struct mif_ehci_regs {
 	unsigned caps_hc_capbase;
 	unsigned caps_hcs_params;
 	unsigned caps_hcc_params;
@@ -148,77 +151,78 @@ struct dump_ehci_regs {
 	unsigned insnreg06;
 	unsigned insnreg07;
 };
+static struct mif_ehci_regs __iomem *ehci_reg;
 
-struct s5p_ehci_hcd_stub {
-	struct device *dev;
-	struct usb_hcd *hcd;
-	struct clk *clk;
-	int power_on;
-};
-/* for EHCI register dump */
-struct dump_ehci_regs sec_debug_ehci_regs;
-
-#define pr_hcd(s, r) printk(KERN_DEBUG "hcd reg(%s):\t 0x%08x\n", s, r)
-static void print_ehci_regs(struct dump_ehci_regs *base)
+#ifdef EHCI_REG_DUMP
+#define pr_reg(s, r) printk(KERN_DEBUG "reg(%s):\t 0x%08x\n", s, r)
+static void print_ehci_regs(struct mif_ehci_regs *base)
 {
-	pr_hcd("HCCPBASE", base->caps_hc_capbase);
-	pr_hcd("HCSPARAMS", base->caps_hcs_params);
-	pr_hcd("HCCPARAMS", base->caps_hcc_params);
-	pr_hcd("USBCMD", base->regs.command);
-	pr_hcd("USBSTS", base->regs.status);
-	pr_hcd("USBINTR", base->regs.intr_enable);
-	pr_hcd("FRINDEX", base->regs.frame_index);
-	pr_hcd("CTRLDSSEGMENT", base->regs.segment);
-	pr_hcd("PERIODICLISTBASE", base->regs.frame_list);
-	pr_hcd("ASYNCLISTADDR", base->regs.async_next);
-	pr_hcd("CONFIGFLAG", base->regs.configured_flag);
-	pr_hcd("PORT0 Status/Control", base->port_usb);
-	pr_hcd("PORT1 Status/Control", base->port_hsic0);
-	pr_hcd("PORT2 Status/Control", base->port_hsic1);
-	pr_hcd("INSNREG00", base->insnreg00);
-	pr_hcd("INSNREG01", base->insnreg01);
-	pr_hcd("INSNREG02", base->insnreg02);
-	pr_hcd("INSNREG03", base->insnreg03);
-	pr_hcd("INSNREG04", base->insnreg04);
-	pr_hcd("INSNREG05", base->insnreg05);
-	pr_hcd("INSNREG06", base->insnreg06);
-	pr_hcd("INSNREG07", base->insnreg07);
+	pr_info("------- EHCI reg dump -------\n");
+	pr_reg("HCCPBASE", base->caps_hc_capbase);
+	pr_reg("HCSPARAMS", base->caps_hcs_params);
+	pr_reg("HCCPARAMS", base->caps_hcc_params);
+	pr_reg("USBCMD", base->regs.command);
+	pr_reg("USBSTS", base->regs.status);
+	pr_reg("USBINTR", base->regs.intr_enable);
+	pr_reg("FRINDEX", base->regs.frame_index);
+	pr_reg("CTRLDSSEGMENT", base->regs.segment);
+	pr_reg("PERIODICLISTBASE", base->regs.frame_list);
+	pr_reg("ASYNCLISTADDR", base->regs.async_next);
+	pr_reg("CONFIGFLAG", base->regs.configured_flag);
+	pr_reg("PORT0 Status/Control", base->port_usb);
+	pr_reg("PORT1 Status/Control", base->port_hsic0);
+	pr_reg("PORT2 Status/Control", base->port_hsic1);
+	pr_reg("INSNREG00", base->insnreg00);
+	pr_reg("INSNREG01", base->insnreg01);
+	pr_reg("INSNREG02", base->insnreg02);
+	pr_reg("INSNREG03", base->insnreg03);
+	pr_reg("INSNREG04", base->insnreg04);
+	pr_reg("INSNREG05", base->insnreg05);
+	pr_reg("INSNREG06", base->insnreg06);
+	pr_reg("INSNREG07", base->insnreg07);
+	pr_info("-----------------------------\n");
 }
 
-static void debug_ehci_reg_dump(struct device *hdev)
+static void print_phy_regs(void)
 {
-	struct s5p_ehci_hcd_stub *s5p_ehci = dev_get_drvdata(hdev);
-	struct usb_hcd *hcd = s5p_ehci->hcd;
-	char *buf = (char *)&sec_debug_ehci_regs;
+	pr_info("----- EHCI PHY REG DUMP -----\n");
+	pr_reg("USBHOST_PHY_CONTROL", readl(EXYNOS5_USBHOST_PHY_CONTROL));
+	pr_reg("HOSTPHYCTRL0", readl(EXYNOS5_PHY_HOST_CTRL0));
+	pr_reg("HOSTPHYTUNE0", readl(EXYNOS5_PHY_HOST_TUNE0));
+	pr_reg("HSICPHYCTRL1", readl(EXYNOS5_PHY_HSIC_CTRL1));
+	pr_reg("HSICPHYTUNE1", readl(EXYNOS5_PHY_HSIC_TUNE1));
+	pr_reg("HSICPHYCTRL2", readl(EXYNOS5_PHY_HSIC_CTRL2));
+	pr_reg("HSICPHYTUNE2", readl(EXYNOS5_PHY_HSIC_TUNE2));
+	pr_reg("HOSTEHCICTRL", readl(EXYNOS5_PHY_HOST_EHCICTRL));
+	pr_reg("OHCICTRL", readl(EXYNOS5_PHY_HOST_OHCICTRL));
+	pr_reg("USBOTG_SYS", readl(EXYNOS5_PHY_OTG_SYS));
+	pr_reg("USBOTG_TUNE", readl(EXYNOS5_PHY_OTG_TUNE));
+	pr_info("-----------------------------\n");
+}
 
-	if (s5p_ehci->power_on && hcd) {
-		memcpy(buf, hcd->regs, 0xB);
-		memcpy(buf + 0x10, hcd->regs + 0x10, 0x1F);
-		memcpy(buf + 0x50, hcd->regs + 0x50, 0xF);
-		memcpy(buf + 0x90, hcd->regs + 0x90, 0x1F);
-		print_ehci_regs(hcd->regs);
-	}
+static void debug_ehci_reg_dump(void)
+{
+	print_phy_regs();
+	print_ehci_regs(ehci_reg);
 }
 #else
-#define debug_ehci_reg_dump (NULL)
+#define debug_ehci_reg_dump() do {} while(0);
 #endif
 
-#define EHCI_PORTREG_OFFSET 0x54
 #define WAIT_CONNECT_CHECK_CNT 30
-static u32 __iomem *port_reg;
 static int s5p_ehci_port_reg_init(void)
 {
-	if (port_reg) {
+	if (ehci_reg) {
 		mif_info("port reg aleady initialized\n");
 		return -EBUSY;
 	}
 
-	port_reg = ioremap((S5P_PA_EHCI + EHCI_PORTREG_OFFSET), SZ_16);
-	if (!port_reg) {
+	ehci_reg = ioremap((S5P_PA_EHCI), SZ_256);
+	if (!ehci_reg) {
 		mif_err("fail to get port reg address\n");
 		return -EINVAL;
 	}
-	mif_info("port reg get success (%p)\n", port_reg);
+	mif_info("port reg get success (%p)\n", ehci_reg);
 
 	return 0;
 }
@@ -229,17 +233,21 @@ static void s5p_ehci_wait_cp_resume(int port)
 	int cnt = WAIT_CONNECT_CHECK_CNT;
 	u32 val;
 
-	if (!port_reg) {
+	if (!ehci_reg) {
 		mif_err("port reg addr invalid\n");
 		return;
 	}
-	portsc = &port_reg[port-1];
+	portsc = &ehci_reg->port_usb + (port - 1);
 
 	do {
 		msleep(20);
 		val = readl(portsc);
 		mif_info("port(%d), reg(0x%x)\n", port, val);
 	} while (cnt-- && !(val & PORT_CONNECT));
+#ifdef EHCI_REG_DUMP
+	if (!(val & PORT_CONNECT))
+		debug_ehci_reg_dump();
+#endif
 }
 
 static int umts_link_reconnect(void);
@@ -258,6 +266,26 @@ static struct modemlink_pm_link_activectl active_ctl;
 
 static void xmm_gpio_revers_bias_clear(void);
 static void xmm_gpio_revers_bias_restore(void);
+
+#if defined(CONFIG_MACH_J_CHN_CU)
+static int optional_cp_crash(void *mc)
+{
+	mif_info("[CP2] froce crash for CP2 - start\n");
+	gpio_direction_input(GPIO_ESC_DUMP_INT_REV02);
+	s3c_gpio_setpull(GPIO_ESC_DUMP_INT_REV02, S3C_GPIO_PULL_NONE);
+	gpio_set_value(GPIO_ESC_DUMP_INT_REV02, 1);
+
+	gpio_direction_output(GPIO_CP2_MSM_RST, 0);
+	msleep(50);
+	gpio_direction_input(GPIO_CP2_MSM_RST);
+	mif_info("[CP2] froce crash for CP2 - end\n");
+
+	gpio_set_value(GPIO_AP_DUMP_INT, 1);
+	mif_info("set ap_dump_int(%d) to high=%d\n",
+		GPIO_AP_DUMP_INT, gpio_get_value(GPIO_AP_DUMP_INT));
+	return 0;
+}
+#endif
 
 #define MAX_CDC_ACM_CH 3
 #define MAX_CDC_NCM_CH 4
@@ -290,6 +318,10 @@ static struct modem_data umts_modem_data = {
 	.max_link_channel = MAX_CDC_ACM_CH + MAX_CDC_NCM_CH,
 	.max_acm_channel = MAX_CDC_ACM_CH,
 	.ipc_version = SIPC_VER_50,
+
+#if defined(CONFIG_MACH_J_CHN_CU)
+	.cp_force_crash = optional_cp_crash,
+#endif
 };
 
 /* HSIC specific function */

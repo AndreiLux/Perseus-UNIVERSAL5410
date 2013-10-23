@@ -645,6 +645,9 @@ typedef enum _PVRSRV_PIXEL_FORMAT_ {
 	PVRSRV_PIXEL_FORMAT_RAW512				= 224,
 	PVRSRV_PIXEL_FORMAT_RAW1024				= 225,
 
+	/* Same as NV12 but with interleaved VU rather than interleaved UV */
+	PVRSRV_PIXEL_FORMAT_NV21				= 226,
+
 	PVRSRV_PIXEL_FORMAT_FORCE_I32			= 0x7fffffff
 
 } PVRSRV_PIXEL_FORMAT;

@@ -61,10 +61,6 @@ extern void forced_release(struct wacom_i2c *wac_i2c);
 extern void forced_hover(struct wacom_i2c *wac_i2c);
 #endif
 
-#ifdef WACOM_IRQ_WORK_AROUND
-extern void wacom_i2c_pendct_work(struct work_struct *work);
-#endif
-
 #ifdef CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
 extern void free_dvfs_lock(struct work_struct *work);
 #endif

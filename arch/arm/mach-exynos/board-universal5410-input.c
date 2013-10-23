@@ -29,6 +29,9 @@
 #ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
 #include <linux/i2c/touchkey_i2c.h>
 #endif
+#ifdef CONFIG_INPUT_WACOM
+#include <linux/wacom_i2c.h>
+#endif
 
 #include <linux/regulator/machine.h>
 #include "board-universal5410.h"
@@ -88,7 +91,7 @@ static int touchkey_suspend(void)
 	}
 
 	if (regulator_is_enabled(regulator))
-		regulator_force_disable(regulator);
+		regulator_disable(regulator);
 
 	s3c_gpio_setpull(GPIO_2_TOUCH_SCL_18V, S3C_GPIO_PULL_DOWN);
 	s3c_gpio_setpull(GPIO_2_TOUCH_SDA_18V, S3C_GPIO_PULL_DOWN);
@@ -163,7 +166,7 @@ static int touchkey_led_power_on(bool on)
 		}
 
 		if (regulator_is_enabled(regulator))
-			regulator_force_disable(regulator);
+			regulator_disable(regulator);
 		regulator_put(regulator);
 	}
 #else
@@ -460,6 +463,23 @@ static void synaptics_enable_sync(bool on)
 	}
 }
 
+/* Define for DDI multiplication
+ * OLED_ID is 0 represent that MAGNA LDI is attatched
+ * OLED ID is 1 represent that SDC LDI is attatched
+ * From H/W revision (1001) support mulit ddi.
+ */
+#define REVISION_NEED_TO_SUPPORT_DDI	9
+#define DDI_SDC	0
+#define DDI_MAGNA	1
+
+static unsigned char synaptics_get_ldi_info(void)
+{
+	if (!gpio_get_value(GPIO_OLED_ID))
+		return DDI_MAGNA;
+	else
+		return DDI_SDC;
+}
+
 static int synaptics_power(bool on)
 {
 	struct regulator *regulator_vdd;
@@ -568,13 +588,11 @@ static int ts_led_power_on(bool on)
 #define TM1940_ATTN 130
 
 /* User firmware */
-#define FW_IMAGE_NAME_B0_3_4	"tsp_synaptics/synaptics_b0_3_4.fw"
-#define FW_IMAGE_NAME_B0_4_0	"tsp_synaptics/synaptics_b0_4_0.fw"
-#define FW_IMAGE_NAME_B0_4_3	"tsp_synaptics/synaptics_b0_4_3.fw"
+#define FW_IMAGE_NAME_B0_H	"tsp_synaptics/synaptics_b0_h.fw"
 #define FW_IMAGE_NAME_B0_5_1	"tsp_synaptics/synaptics_b0_5_1.fw"
 
 /* Factory firmware */
-#define FAC_FWIMAGE_NAME_B0		"tsp_synaptics/synaptics_b0_fac.fw"
+#define FAC_FWIMAGE_NAME_B0_H		"tsp_synaptics/synaptics_b0_fac.fw"
 #define FAC_FWIMAGE_NAME_B0_5_1		"tsp_synaptics/synaptics_b0_5_1_fac.fw"
 #define NUM_RX	28
 #define NUM_TX	16
@@ -593,6 +611,7 @@ static struct synaptics_rmi4_platform_data rmi4_platformdata = {
 #endif
 	.firmware_name = NULL,
 	.fac_firmware_name = NULL,
+	.get_ddi_type = NULL,
 	.num_of_rx = NUM_RX,
 	.num_of_tx = NUM_TX,
 };
@@ -606,68 +625,16 @@ static struct i2c_board_info synaptics_i2c_devs0[] = {
 
 static void synaptics_verify_panel_revision(void)
 {
-	/* DBh(ID1) of LDI version represents touch IC type and EL type
-	 * So we need to verify this infomation(which panel is attatched)
-	 * to load proper firmware and display it on factory app.
-	 *
-	 * 7(Encap) 6~4(Touch ID) 3~2(DCDC) 1~0(EL)
-	 *
-	 * Touch ID defines
-	 * 0 = Atmel mxt540s_revG
-	 * 1 = Synaptic IC
-	 * 2 = Atmel mxt540s_revS Boot only
-	 * 3 = Atmel mxt540s_revS Pre alpha
-	 * 4 = Synaptic IC
-	 * 5 = Synaptic IC(Remove SUS, connect GND Ring-Guard)
-	 * 6 = Synaptic IC(R03 Encap)
-	 *
-	 * From below IDs, it can be use Hsync signal
-	 *
-	 * 7 = Synaptic IC(4 level FPCB, R03 Encap + add Level shift TR)
-	 * 8 = Synaptic IC(2 level FPCB, R03 Encap + add Level shift TR)
-	 *
-	 * EL defines
-	 * 0 = M4
-	 * 1 = M4+
-	 */
-
 	u8 el_type = (lcdtype & 0x300) >> 8;
 	u8 touch_type = (lcdtype & 0xF000) >> 12;
 
-	/* Definition for firmware name according to panel ID
-	 *
-	 * ID,	FPCB Name,	User firmware,			Factory firmware
-	 * ~ 4,	FPCB 3.4,	FW_IMAGE_NAME_B0_3_4,	FAC_FWIMAGE_NAME_B0
-	 * ~ 4,	FPCB 4.0,	FW_IMAGE_NAME_B0_4_0,	FAC_FWIMAGE_NAME_B0
-	 * 5,	FPCB 4.3,	FW_IMAGE_NAME_B0_4_3,	FAC_FWIMAGE_NAME_B0
-	 * 6,	FPCB 6.0,	FW_IMAGE_NAME_B0_4_3,	FAC_FWIMAGE_NAME_B0
-	 * 7,	FPCB 7.x,	FW_IMAGE_NAME_B0_4_3,	FAC_FWIMAGE_NAME_B0
-	 * 8,	FPCB 5.x,	FW_IMAGE_NAME_B0_5_1,	FAC_FWIMAGE_NAME_B0_5_1
-	 */
-
-	if (touch_type < 5) {
-		if (!el_type) {				/* FPCB 3.4 */
-			rmi4_platformdata.firmware_name = FW_IMAGE_NAME_B0_3_4;
-		} else {					/* FPCB 4.0 */
-			rmi4_platformdata.firmware_name = FW_IMAGE_NAME_B0_4_0;
-		}
-		rmi4_platformdata.fac_firmware_name = FAC_FWIMAGE_NAME_B0;
-	} else if (touch_type == 5) {	/* FPCB 4.3 */
-		rmi4_platformdata.firmware_name = FW_IMAGE_NAME_B0_4_3;
-		rmi4_platformdata.fac_firmware_name = FAC_FWIMAGE_NAME_B0;
-	} else if (touch_type == 6) {	/* FPCB 6.0 */
-		rmi4_platformdata.firmware_name = FW_IMAGE_NAME_B0_4_3;
-		rmi4_platformdata.fac_firmware_name = FAC_FWIMAGE_NAME_B0;
-	} else if (touch_type == 7) {	/* FPCB 7.x */
-		rmi4_platformdata.firmware_name = FW_IMAGE_NAME_B0_4_3;
-		rmi4_platformdata.fac_firmware_name = FAC_FWIMAGE_NAME_B0;
-	} else if (touch_type == 8) {	/* FPCB 8.x 5.x */
-		rmi4_platformdata.firmware_name = FW_IMAGE_NAME_B0_5_1;
-		rmi4_platformdata.fac_firmware_name = FAC_FWIMAGE_NAME_B0_5_1;
-	} else {
-		rmi4_platformdata.firmware_name = FW_IMAGE_NAME_B0_4_3;
-		rmi4_platformdata.fac_firmware_name = FAC_FWIMAGE_NAME_B0;
-	}
+#ifdef CONFIG_MACH_HA
+	rmi4_platformdata.firmware_name = FW_IMAGE_NAME_B0_H;
+	rmi4_platformdata.fac_firmware_name = FAC_FWIMAGE_NAME_B0_H;
+#else
+	rmi4_platformdata.firmware_name = FW_IMAGE_NAME_B0_5_1;
+	rmi4_platformdata.fac_firmware_name = FAC_FWIMAGE_NAME_B0_5_1;
+#endif
 
 	rmi4_platformdata.panel_revision = touch_type;
 
@@ -682,10 +649,15 @@ static void synaptics_verify_panel_revision(void)
 	printk(KERN_ERR "%s: bootmode: %d\n", __func__, bootmode);
 #endif
 
-	printk(KERN_ERR "%s: panel_revision: %d, system_rev: %d, lcdtype: 0x%06X, touch_type: %d, el_type: %s, h_sync: %s\n",
+	/*if (system_rev >= REVISION_NEED_TO_SUPPORT_DDI)*/
+	rmi4_platformdata.get_ddi_type = &synaptics_get_ldi_info,
+
+	printk(KERN_ERR "%s: panel_revision: %d, system_rev: %d, lcdtype: 0x%06X, touch_type: %d, el_type: %s, h_sync: %s, ddi_type: %s\n",
 		__func__, rmi4_platformdata.panel_revision,	system_rev,
 		lcdtype, touch_type, el_type ? "M4+" : "M4",
-		!rmi4_platformdata.enable_sync ? "off" : "on");
+		!rmi4_platformdata.enable_sync ? "NA" : "OK",
+		!rmi4_platformdata.get_ddi_type ? "SDC" :
+		rmi4_platformdata.get_ddi_type() ? "MAGNA" : "SDC");
 };
 
 void __init synaptics_tsp_init(void)
@@ -706,6 +678,242 @@ void __init synaptics_tsp_init(void)
 
 	printk(KERN_ERR "%s touch : %d\n",
 		__func__, synaptics_i2c_devs0[0].irq);
+}
+#endif
+
+#ifdef CONFIG_INPUT_WACOM
+static struct wacom_g5_callbacks *wacom_callbacks;
+static bool wacom_power_enabled;
+
+int wacom_power(bool on)
+{
+#ifdef GPIO_PEN_LDO_EN
+	gpio_direction_output(GPIO_PEN_LDO_EN, on);
+#else
+	struct regulator *regulator_vdd;
+
+	if (wacom_power_enabled == on) {
+		printk(KERN_DEBUG "epen: %s %s\n",
+			__func__, on ? "on" : "off");
+		return 0;
+	}
+
+	regulator_vdd = regulator_get(NULL, "tsp_vdd_3.0v");
+	if (IS_ERR(regulator_vdd)) {
+		printk(KERN_ERR"epen: %s reg get err\n", __func__);
+		return PTR_ERR(regulator_vdd);
+	}
+
+	if (on) {
+		regulator_enable(regulator_vdd);
+	} else {
+		if (regulator_is_enabled(regulator_vdd))
+			regulator_disable(regulator_vdd);
+		else
+			regulator_force_disable(regulator_vdd);
+	}
+	regulator_put(regulator_vdd);
+	printk(KERN_DEBUG "epen: %s %s\n",
+		__func__, on ? "on" : "off");
+
+	wacom_power_enabled = on;
+#endif
+	return 0;
+}
+
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static int wacom_early_suspend_hw(void)
+{
+#ifdef GPIO_PEN_RESET_N
+	gpio_direction_output(GPIO_PEN_RESET_N, 0);
+#endif
+	wacom_power(0);
+	/* Set GPIO_PEN_IRQ to pull-up to reduce leakage */
+	s3c_gpio_setpull(GPIO_PEN_IRQ, S3C_GPIO_PULL_UP);
+
+	return 0;
+}
+
+static int wacom_late_resume_hw(void)
+{
+#ifdef GPIO_PEN_RESET_N
+	gpio_direction_output(GPIO_PEN_RESET_N, 1);
+#endif
+	gpio_direction_output(GPIO_PEN_PDCT, 1);
+	s3c_gpio_setpull(GPIO_PEN_IRQ, S3C_GPIO_PULL_NONE);
+	wacom_power(1);
+	msleep(100);
+	gpio_direction_input(GPIO_PEN_PDCT);
+	return 0;
+}
+#endif
+
+static int wacom_suspend_hw(void)
+{
+#ifdef GPIO_PEN_RESET_N
+	gpio_direction_output(GPIO_PEN_RESET_N, 0);
+#endif
+	wacom_power(0);
+	/* Set GPIO_PEN_IRQ to pull-up to reduce leakage */
+	s3c_gpio_setpull(GPIO_PEN_IRQ, S3C_GPIO_PULL_UP);
+	return 0;
+}
+
+static int wacom_resume_hw(void)
+{
+#ifdef GPIO_PEN_RESET_N
+	gpio_direction_output(GPIO_PEN_RESET_N, 1);
+#endif
+	gpio_direction_output(GPIO_PEN_PDCT, 1);
+	s3c_gpio_setpull(GPIO_PEN_IRQ, S3C_GPIO_PULL_NONE);
+	wacom_power(1);
+	/*msleep(100);*/
+	gpio_direction_input(GPIO_PEN_PDCT);	
+	return 0;
+}
+
+static int wacom_reset_hw(void)
+{
+	wacom_suspend_hw();
+	msleep(100);
+	wacom_resume_hw();
+
+	return 0;
+}
+
+static void wacom_register_callbacks(struct wacom_g5_callbacks *cb)
+{
+	wacom_callbacks = cb;
+};
+
+static void wacom_compulsory_flash_mode(bool en)
+{
+	gpio_direction_output(GPIO_PEN_FWE1, en);
+}
+
+static struct wacom_g5_platform_data wacom_platform_data = {
+	.x_invert = WACOM_X_INVERT,
+	.y_invert = WACOM_Y_INVERT,
+	.xy_switch = WACOM_XY_SWITCH,
+	.min_x = 0,
+	.max_x = WACOM_MAX_COORD_X,
+	.min_y = 0,
+	.max_y = WACOM_MAX_COORD_Y,
+	.min_pressure = 0,
+	.max_pressure = WACOM_PRESSURE_MAX,
+	.gpio_pendct = GPIO_PEN_PDCT,
+	/*.init_platform_hw = wacom_init,*/
+	/*      .exit_platform_hw =,    */
+	.suspend_platform_hw = wacom_suspend_hw,
+	.resume_platform_hw = wacom_resume_hw,
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	.early_suspend_platform_hw = wacom_early_suspend_hw,
+	.late_resume_platform_hw = wacom_late_resume_hw,
+#endif
+	.reset_platform_hw = wacom_reset_hw,
+	.register_cb = wacom_register_callbacks,
+	.compulsory_flash_mode = wacom_compulsory_flash_mode,
+	.gpio_pen_insert = GPIO_PEN_DETECT,
+};
+
+/* I2C */
+static struct i2c_board_info wacom_i2c_devs[] __initdata = {
+	{
+		I2C_BOARD_INFO("wacom_g5sp_i2c", WACOM_I2C_ADDR),
+			.platform_data = &wacom_platform_data,
+	},
+};
+
+#define WACOM_SET_I2C(ch, pdata, i2c_info)	\
+	do {		\
+	s3c_i2c##ch##_set_platdata(pdata);	\
+	i2c_register_board_info(ch, i2c_info,	\
+	ARRAY_SIZE(i2c_info));	\
+	platform_device_register(&s3c_device_i2c##ch);	\
+	} while (0);
+
+void __init wacom_init(void)
+{
+	int gpio;
+	int ret;
+
+#ifdef GPIO_PEN_RESET_N
+	/*Reset*/
+	gpio = GPIO_PEN_RESET_N;
+	ret = gpio_request(gpio, "PEN_RESET_N");
+	if (ret) {
+		printk(KERN_ERR "epen:failed to request PEN_RESET_N.(%d)\n",
+			ret);
+		return ;
+	}
+	s3c_gpio_cfgpin(gpio, S3C_GPIO_SFN(0x1));
+	s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
+	gpio_direction_output(gpio, 0);
+#endif
+
+	/*SLP & FWE1*/
+	gpio = GPIO_PEN_FWE1;
+	ret = gpio_request(gpio, "PEN_FWE1");
+	if (ret) {
+		printk(KERN_ERR "epen:failed to request PEN_FWE1.(%d)\n",
+			ret);
+		return ;
+	}
+	s3c_gpio_cfgpin(gpio, S3C_GPIO_SFN(0x1));
+	s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
+	gpio_direction_output(gpio, 0);
+
+	/*PDCT*/
+	gpio = GPIO_PEN_PDCT;
+	ret = gpio_request(gpio, "PEN_PDCT");
+	if (ret) {
+		printk(KERN_ERR "epen:failed to request PEN_PDCT.(%d)\n",
+			ret);
+		return ;
+	}
+	s3c_gpio_cfgpin(gpio, S3C_GPIO_SFN(0xf));
+	s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
+	s5p_register_gpio_interrupt(gpio);
+	gpio_direction_input(gpio);
+
+	irq_set_irq_type(gpio_to_irq(gpio), IRQ_TYPE_EDGE_BOTH);
+
+	/*IRQ*/
+	gpio = GPIO_PEN_IRQ;
+	ret = gpio_request(gpio, "PEN_IRQ");
+	if (ret) {
+		printk(KERN_ERR "epen:failed to request PEN_IRQ.(%d)\n",
+			ret);
+		return ;
+	}
+	s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
+	s5p_register_gpio_interrupt(gpio);
+	gpio_direction_input(gpio);
+
+	wacom_i2c_devs[0].irq = gpio_to_irq(gpio);
+	irq_set_irq_type(wacom_i2c_devs[0].irq, IRQ_TYPE_EDGE_RISING);
+
+	s3c_gpio_cfgpin(gpio, S3C_GPIO_SFN(0xf));
+
+	/*LDO_EN*/
+#ifdef GPIO_PEN_LDO_EN
+	gpio = GPIO_PEN_LDO_EN;
+	ret = gpio_request(gpio, "PEN_LDO_EN");
+	if (ret) {
+		printk(KERN_ERR "epen:failed to request PEN_LDO_EN.(%d)\n",
+			ret);
+		return ;
+	}
+	s3c_gpio_cfgpin(gpio, S3C_GPIO_OUTPUT);
+	gpio_direction_output(gpio, 0);
+#else
+	wacom_power(0);
+#endif
+
+	WACOM_SET_I2C(3, NULL, wacom_i2c_devs);
+
+	printk(KERN_INFO "epen:: wacom IC initialized.\n");
 }
 #endif
 
@@ -784,6 +992,9 @@ void __init exynos5_universal5410_input_init(void)
 	midas_tsp_init();
 #endif
 	universal5410_gpio_keys_config_setup();
+#ifdef CONFIG_INPUT_WACOM
+	wacom_init();
+#endif
 #ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
 	touchkey_init_hw();
 	i2c_register_board_info(8, i2c_devs8_emul, ARRAY_SIZE(i2c_devs8_emul));

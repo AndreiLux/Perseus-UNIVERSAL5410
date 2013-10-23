@@ -141,7 +141,9 @@ obj-$(CONFIG_VIBETONZ)		+= motor/
 
 obj-$(CONFIG_SENSORS_SSP)	+= sensorhub/
 
-obj-$(CONFIG_MOBICORE_DRIVER)	+= gud/
+obj-$(CONFIG_SENSORS_FINGERPRINT)	+= fingerprint/
+
+obj-y				+= gud/
 
 obj-$(CONFIG_ACCESSORY)		+= accessory/
 obj-$(CONFIG_ICE4_FPGA)		+= ice4_fpga/

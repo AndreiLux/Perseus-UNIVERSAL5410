@@ -77,11 +77,20 @@ static int __init sec_log_setup(char *str)
 	    || kstrtoul(str + 1, 0, &base))
 		goto out;
 
+#ifdef CONFIG_TIMA_DEBUG_LOG
+	if (reserve_bootmem(base - 8, size + 8 + 0x200000, BOOTMEM_EXCLUSIVE)) {
+		pr_err("%s: failed reserving size %d + 8 " \
+		       "at base 0x%lx - 8\n", __func__, size, base);
+		goto out;
+	}
+#else
 	if (reserve_bootmem(base - 8, size + 8, BOOTMEM_EXCLUSIVE)) {
 		pr_err("%s: failed reserving size %d + 8 " \
 		       "at base 0x%lx - 8\n", __func__, size, base);
 		goto out;
 	}
+#endif
+
 #ifdef CONFIG_SEC_LOG_NONCACHED
 	log_buf_iodesc[0].pfn = __phys_to_pfn((unsigned long)base - 0x100000);
 	log_buf_iodesc[0].length = (unsigned long)(size + 0x100000);

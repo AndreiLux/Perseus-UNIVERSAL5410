@@ -1279,11 +1279,16 @@ static int exynos5_check_usb_op(void)
 	if (hostphy_ctrl0 & HOST_CTRL0_FORCESUSPEND &&
 		hsic_ctrl1 & HSIC_CTRL_FORCESUSPEND &&
 		hsic_ctrl2 & HSIC_CTRL_FORCESUSPEND) {
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB) \
-		|| defined(CONFIG_MDM_HSIC_PM)
+#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_LINK_DEVICE_USB)
 		/* HSIC LPA: LPA USB phy retention reume call the usb
 		 * reset resume, so we should let CP to HSIC L3 mode. */
 		set_hsic_lpa_states(STATE_HSIC_LPA_ENTER);
+#elif defined(CONFIG_MDM_HSIC_PM)
+		ret = set_hsic_lpa_states(STATE_HSIC_LPA_ENTER);
+		if (ret < 0) {
+			op = 1;
+			goto done;
+		}
 #endif
 		/* unset to normal of Host */
 		hostphy_ctrl0 |= (HOST_CTRL0_SIDDQ);

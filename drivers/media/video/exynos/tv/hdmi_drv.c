@@ -737,7 +737,7 @@ static void hdmi_hpd_changed(struct hdmi_device *hdev, int state)
 	u32 preset;
 	int ret;
 #ifdef CONFIG_SAMSUNG_MHL_8240
-	int audio_info;
+	int audio_info = 0, max_audio_ch = 0;
 #endif
 	if (state == switch_get_state(&hdev->hpd_switch))
 		return;
@@ -761,7 +761,12 @@ static void hdmi_hpd_changed(struct hdmi_device *hdev, int state)
 #ifdef CONFIG_SAMSUNG_MHL_8240
 	if (state) {
 		/*Audio CH event*/
-		audio_info = hdmi_send_audio_info(state, hdev);
+		max_audio_ch = edid_max_audio_channels(hdev);
+		if (max_audio_ch > 0)
+			audio_info |= (1 << (max_audio_ch - 1));
+		if (max_audio_ch > 6)
+			audio_info |= (1 << 5);
+		pr_err("[HDMI] send audio_info :: %d\n", audio_info);
 		switch_set_state(&hdev->audio_ch_switch, (int)audio_info);
 
 	} else {

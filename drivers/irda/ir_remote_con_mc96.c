@@ -34,12 +34,6 @@
 #include <linux/ir_remote_con_mc96.h>
 #include "irda_fw.h"
 
-#if defined(CONFIG_V1_3G_REV00)
-#include <mach/gpio-v1-3g-rev00.h>
-#elif defined(CONFIG_V1_LTE_REV00)
-#include <mach/gpio-v1-lte-rev00.h>
-#endif
-
 #define MAX_SIZE 2048
 #define MC96_READ_LENGTH	8
 #define DUMMY 0xffff

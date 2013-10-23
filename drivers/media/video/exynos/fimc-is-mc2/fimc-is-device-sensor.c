@@ -282,6 +282,14 @@ static struct _csis_hsync_settle csis_hsync_settle[] = {
 		.framerate	= 30,
 		.settle		= 16,
 	},
+	/* S5K6B2, 1936x1090@15fps */
+	[23] = {
+		.channel	= CSI_ID_C,
+		.width		= 1936,
+		.height		= 1090,
+		.framerate	= 15,
+		.settle		= 16,
+	},
 };
 
 static unsigned int num_of_settle = ARRAY_SIZE(csis_hsync_settle);
@@ -606,7 +614,7 @@ int fimc_is_sensor_probe(struct fimc_is_device_sensor *device, u32 channel)
 	enum_sensor[SENSOR_NAME_S5K4E5].pixel_height = 1920 + 10;
 	enum_sensor[SENSOR_NAME_S5K4E5].active_width = 2560;
 	enum_sensor[SENSOR_NAME_S5K4E5].active_height = 1920;
-	enum_sensor[SENSOR_NAME_S5K4E5].max_framerate = 30;
+	enum_sensor[SENSOR_NAME_S5K4E5].max_framerate = 120;
 	enum_sensor[SENSOR_NAME_S5K4E5].csi_ch = 0;
 	enum_sensor[SENSOR_NAME_S5K4E5].flite_ch = FLITE_ID_A;
 	enum_sensor[SENSOR_NAME_S5K4E5].i2c_ch = 0;

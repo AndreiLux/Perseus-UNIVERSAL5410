@@ -21,9 +21,7 @@
 #define _LINUX_WACOM_I2C_COORD_TABLE_H
 
 /*Tables*/
-#if defined(CONFIG_MACH_Q1_BD)
-#include "table-q1.h"
-#elif defined(CONFIG_MACH_T0)
+#if defined(CONFIG_MACH_T0) || defined(CONFIG_MACH_HA)
 
 /*Locale*/
 #if defined(CONFIG_TARGET_LOCALE_KOR)
@@ -46,10 +44,7 @@
 
 
 /* Origin Shift */
-#if defined(CONFIG_MACH_Q1_BD)
-short origin_offset[] = {600, 620};
-short origin_offset_48[] = {720, 760};
-#elif defined(CONFIG_MACH_T0)
+#if defined(CONFIG_MACH_T0)
 short origin_offset[] = {676, 724};
 
 short tilt_offsetX_B713[MAX_HAND][MAX_ROTATION] = \
@@ -58,6 +53,8 @@ short tilt_offsetY_B713[MAX_HAND][MAX_ROTATION] = \
 {{-90, 120, 100, -80, }, {-80, -90, 120, 100, } };
 
 char *tuning_version_B713 = "0730";
+#elif defined(CONFIG_MACH_HA)
+short origin_offset[] = {752, 643};
 #endif
 
 /* Distance Offset Table */

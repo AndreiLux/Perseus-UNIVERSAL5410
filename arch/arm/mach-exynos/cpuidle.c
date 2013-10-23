@@ -46,6 +46,7 @@
 #include <plat/gpio-cfg.h>
 #include <plat/gpio-core.h>
 #include <plat/usb-phy.h>
+#include <mach/sec_debug.h>
 
 #ifdef CONFIG_EXYNOS_C2C
 #include <mach/c2c.h>
@@ -536,6 +537,7 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 	unsigned int cpuid = smp_processor_id();
 
 	local_irq_disable();
+	sec_debug_task_log_msg(cpuid, "aftr+");
 
 #ifdef CONFIG_SEC_PM_DEBUG
 	if (log_en & ENABLE_AFTR)
@@ -603,6 +605,7 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 		exynos_reset_assert_ctrl(1);
 
 	do_gettimeofday(&after);
+	sec_debug_task_log_msg(cpuid, "aftr-");
 
 #ifdef CONFIG_SEC_PM_DEBUG
 	if (log_en & ENABLE_AFTR)
@@ -688,6 +691,7 @@ static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 	}
 
 	local_irq_disable();
+	sec_debug_task_log_msg(cpuid, "lpa+");
 
 #ifdef CONFIG_SEC_PM_DEBUG
 	if (log_en & ENABLE_LPA)
@@ -810,6 +814,7 @@ early_wakeup:
 	bt_uart_rts_ctrl(0);
 #endif
 	do_gettimeofday(&after);
+	sec_debug_task_log_msg(cpuid, "lpa-");
 
 #ifdef CONFIG_SEC_PM_DEBUG
 	if (log_en & ENABLE_LPA)

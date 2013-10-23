@@ -90,233 +90,13 @@
 #define EPEN_DTYPE_B804 4
 #define EPEN_DTYPE_B878 5
 
+#define EPEN_DTYPE_B887 6
+#define EPEN_DTYPE_B911 7
+
 #define WACOM_I2C_MODE_BOOT 1
 #define WACOM_I2C_MODE_NORMAL 0
 
-#if defined(CONFIG_MACH_P4NOTE) \
-	|| defined(CONFIG_MACH_P4)
-#define WACOM_DVFS_LOCK_FREQ 800000
-#ifdef CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
-#define SEC_BUS_LOCK
-#endif
-#if defined(CONFIG_QC_MODEM)
-#define WACOM_HAVE_FWE_PIN
-#endif
-#define BATTERY_SAVING_MODE
-#define WACOM_CONNECTION_CHECK
-#define WACOM_HAVE_RESET_CONTROL 0
-#define WACOM_POSX_MAX 21866
-#define WACOM_POSY_MAX 13730
-#define WACOM_POSX_OFFSET 170
-#define WACOM_POSY_OFFSET 170
-#define WACOM_MAX_PRESSURE 0x3FF
-#define WACOM_IRQ_WORK_AROUND
-#define WACOM_PEN_DETECT
-#define WACOM_MAX_COORD_X WACOM_POSX_MAX
-#define WACOM_MAX_COORD_Y WACOM_POSY_MAX
-
-#elif defined(CONFIG_MACH_Q1_BD)
-
-#define COOR_WORK_AROUND
-#define WACOM_IMPORT_FW_ALGO
-#define WACOM_USE_OFFSET_TABLE
-#define WACOM_USE_AVERAGING
-#define WACOM_USE_TILT_OFFSET
-
-#define WACOM_SLEEP_WITH_PEN_SLP
-#define WACOM_HAVE_RESET_CONTROL 1
-#define CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
-#define WACOM_DVFS_LOCK_FREQ 500000
-
-#define COOR_WORK_AROUND_X_MAX		0x2C80
-#define COOR_WORK_AROUND_Y_MAX		0x1BD0
-#define COOR_WORK_AROUND_PRESSURE_MAX	0xFF
-
-#define WACOM_I2C_TRANSFER_STYLE
-#if !defined(WACOM_I2C_TRANSFER_STYLE)
-#define WACOM_I2C_RECV_SEND_STYLE
-#endif
-
-#define WACOM_MAX_COORD_X 11392
-#define WACOM_MAX_COORD_Y 7120
-#define WACOM_MAX_PRESSURE 0xFF
-
-/* For Android origin */
-#define WACOM_POSX_MAX WACOM_MAX_COORD_Y
-#define WACOM_POSY_MAX WACOM_MAX_COORD_X
-
-#define MAX_ROTATION	4
-#define MAX_HAND		2
-
-#elif defined(CONFIG_MACH_T0)
-
-#define WACOM_MAX_COORD_X 12288
-#define WACOM_MAX_COORD_Y 6912
-#define WACOM_MAX_PRESSURE 1023
-
-/* For Android origin */
-#define WACOM_POSX_MAX WACOM_MAX_COORD_Y
-#define WACOM_POSY_MAX WACOM_MAX_COORD_X
-
-#define COOR_WORK_AROUND
-#define WACOM_IMPORT_FW_ALGO
-#define WACOM_USE_OFFSET_TABLE
-#define WACOM_USE_AVERAGING
-#define WACOM_USE_AVE_TRANSITION
-#define WACOM_USE_BOX_FILTER
-#define WACOM_USE_TILT_OFFSET
-#define WACOM_USE_HEIGHT
-
-#if defined(CONFIG_TARGET_LOCALE_KOR)
-#define WACOM_STATE_CHECK
-#define WACOM_DEBOUNCEINT_BY_ESD
-#endif
-
-#define MAX_ROTATION	4
-#define MAX_HAND		2
-
-#define WACOM_PEN_DETECT
-#define WACOM_HAVE_FWE_PIN
-
-/* origin offset */
-#define EPEN_B660_ORG_X 456
-#define EPEN_B660_ORG_Y 504
-
-#define EPEN_B713_ORG_X 676
-#define EPEN_B713_ORG_Y 724
-
-/*Box Filter Parameters*/
-#define  X_INC_S1  1500
-#define  X_INC_E1  (WACOM_MAX_COORD_X - 1500)
-#define  Y_INC_S1  1500
-#define  Y_INC_E1  (WACOM_MAX_COORD_Y - 1500)
-
-#define  Y_INC_S2  500
-#define  Y_INC_E2  (WACOM_MAX_COORD_Y - 500)
-#define  Y_INC_S3  1100
-#define  Y_INC_E3  (WACOM_MAX_COORD_Y - 1100)
-
-#define CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
-#define WACOM_DVFS_LOCK_FREQ 800000
-#define BATTERY_SAVING_MODE
-
-/*HWID to distinguish Detect Switch*/
-#if defined(CONFIG_MACH_T0_EUR_LTE) \
-	|| defined(CONFIG_MACH_T0_EUR_OPEN) \
-	|| defined(CONFIG_MACH_T0_USA_ATT) \
-	|| defined(CONFIG_MACH_T0_USA_VZW) \
-	|| defined(CONFIG_MACH_T0_USA_SPR) \
-	|| defined(CONFIG_MACH_T0_USA_TMO) \
-	|| defined(CONFIG_MACH_T0GQ_JPN_LTE_DCM) \
-	|| defined(CONFIG_MACH_T0_JPN_LTE_DCM) \
-	|| defined(CONFIG_MACH_T0_CHN_OPEN) \
-	|| defined(CONFIG_MACH_T0_CHN_CU) \
-	|| defined(CONFIG_MACH_T0_CHN_CU_DUOS) \
-	|| defined(CONFIG_MACH_T0_CHN_CMCC) \
-	|| defined(CONFIG_MACH_T0_CHN_CTC) \
-	|| defined(CONFIG_MACH_T0_CHN_OPEN_DUOS)
-#define WACOM_DETECT_SWITCH_HWID 7
-
-#elif defined(CONFIG_MACH_T0_KOR_SKT) \
-	|| defined(CONFIG_MACH_T0_KOR_LGT) \
-	|| defined(CONFIG_MACH_T0_KOR_KT)
-#define WACOM_DETECT_SWITCH_HWID 6
-
-#elif defined(CONFIG_MACH_T0_USA_USCC)
-	#define WACOM_DETECT_SWITCH_HWID 8
-
-#else
-
-#define WACOM_DETECT_SWITCH_HWID 0xFFFF
-#endif
-
-/*HWID to distinguish FWE1*/
-#if defined(CONFIG_MACH_T0_EUR_LTE) \
-	|| defined(CONFIG_MACH_T0_EUR_OPEN) \
-	|| defined(CONFIG_MACH_T0_USA_ATT) \
-	|| defined(CONFIG_MACH_T0_USA_VZW) \
-	|| defined(CONFIG_MACH_T0_USA_SPR) \
-	|| defined(CONFIG_MACH_T0_USA_TMO) \
-	|| defined(CONFIG_MACH_T0_USA_USCC) \
-	|| defined(CONFIG_MACH_T0_KOR_SKT) \
-	|| defined(CONFIG_MACH_T0_KOR_KT) \
-	|| defined(CONFIG_MACH_T0_KOR_LGT) \
-	|| defined(CONFIG_MACH_T0GQ_JPN_LTE_DCM) \
-	|| defined(CONFIG_MACH_T0_JPN_LTE_DCM)	\
-	|| defined(CONFIG_MACH_T0_CHN_OPEN) \
-	|| defined(CONFIG_MACH_T0_CHN_CU) \
-	|| defined(CONFIG_MACH_T0_CHN_CU_DUOS) \
-	|| defined(CONFIG_MACH_T0_CHN_CMCC) \
-	|| defined(CONFIG_MACH_T0_CHN_CTC) \
-	|| defined(CONFIG_MACH_T0_CHN_OPEN_DUOS)
-#define WACOM_FWE1_HWID 8
-
-#else
-#define WACOM_FWE1_HWID 0xFFFF
-
-#endif
-
-/*HWID to distinguish B713 Digitizer*/
-#define WACOM_DTYPE_B713_HWID 4
-/*HWID to distinguish B746 Digitizer*/
-#if defined(CONFIG_MACH_T0_CHN_CMCC)
-#define WACOM_DTYPE_B746_HWID 8
-
-#elif defined(CONFIG_MACH_T0_EUR_LTE) \
-	|| defined(CONFIG_MACH_T0_EUR_OPEN) \
-	|| defined(CONFIG_MACH_T0_USA_ATT) \
-	|| defined(CONFIG_MACH_T0_USA_VZW) \
-	|| defined(CONFIG_MACH_T0_USA_SPR) \
-	|| defined(CONFIG_MACH_T0_KOR_SKT) \
-	|| defined(CONFIG_MACH_T0_KOR_LGT) \
-	|| defined(CONFIG_MACH_T0_KOR_KT) \
-	|| defined(CONFIG_MACH_T0_CHN_OPEN) \
-	|| defined(CONFIG_MACH_T0_CHN_CU) \
-	|| defined(CONFIG_MACH_T0_CHN_CU_DUOS) \
-	|| defined(CONFIG_MACH_T0_CHN_CTC) \
-	|| defined(CONFIG_MACH_T0_CHN_OPEN_DUOS)
-#define WACOM_DTYPE_B746_HWID 9
-
-#elif defined(CONFIG_MACH_T0_USA_TMO) \
-	|| defined(CONFIG_MACH_T0_USA_USCC) \
-	|| defined(CONFIG_MACH_T0_JPN_LTE_DCM)
-#define WACOM_DTYPE_B746_HWID 10
-
-#else
-#define WACOM_DTYPE_B746_HWID 0xFFFF
-
-#endif
-
-#elif defined(CONFIG_MACH_KONA)
-
-#define WACOM_DVFS_LOCK_FREQ 800000
-#ifdef CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
-#define SEC_BUS_LOCK
-#endif
-#define WACOM_HAVE_FWE_PIN
-/*
-#define WACOM_USE_SOFTKEY
-*/
-
-#define WACOM_X_INVERT 0
-#define WACOM_XY_SWITCH 0
-
-#define BATTERY_SAVING_MODE
-#define WACOM_CONNECTION_CHECK
-
-#define WACOM_MAX_COORD_X 10764
-#define WACOM_MAX_COORD_Y 17222
-#define WACOM_MAX_PRESSURE 1023
-
-#define WACOM_IRQ_WORK_AROUND
-#define WACOM_PEN_DETECT
-/* For Android origin */
-#define WACOM_POSX_MAX WACOM_MAX_COORD_Y
-#define WACOM_POSY_MAX WACOM_MAX_COORD_X
-
-#define COOR_WORK_AROUND
-
-#elif defined(CONFIG_MACH_V1)
+#if defined(CONFIG_MACH_V1)
 
 #define WACOM_DVFS_LOCK_FREQ 800000
 #ifdef CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
@@ -326,7 +106,6 @@
 #define WACOM_HAVE_FWE_PIN
 
 #define WACOM_USE_SOFTKEY
-
 
 #define WACOM_X_INVERT 0
 #define WACOM_XY_SWITCH 0
@@ -349,6 +128,65 @@
 #define WACOM_DTYPE_B804_HWID 0
 #define WACOM_DTYPE_B878_HWID 3
 
+#elif defined(CONFIG_MACH_HA)
+#define WACOM_MAX_COORD_X 12576
+#define WACOM_MAX_COORD_Y 7074
+#define WACOM_MAX_PRESSURE 1023
+#define WACOM_USE_PDATA
+
+#define WACOM_USE_SOFTKEY
+
+/* For Android origin */
+#define WACOM_POSX_MAX WACOM_MAX_COORD_Y
+#define WACOM_POSY_MAX WACOM_MAX_COORD_X
+
+#define COOR_WORK_AROUND
+
+#define WACOM_IMPORT_FW_ALGO
+/*#define WACOM_USE_OFFSET_TABLE*/
+#define WACOM_USE_AVERAGING
+#if 0
+#define WACOM_USE_AVE_TRANSITION
+#define WACOM_USE_BOX_FILTER
+#define WACOM_USE_TILT_OFFSET
+#define WACOM_USE_HEIGHT
+#endif
+
+#define MAX_ROTATION	4
+#define MAX_HAND		2
+
+#define WACOM_PEN_DETECT
+
+/* origin offset */
+#define EPEN_B660_ORG_X 456
+#define EPEN_B660_ORG_Y 504
+
+#define EPEN_B713_ORG_X 676
+#define EPEN_B713_ORG_Y 724
+
+/*Box Filter Parameters*/
+#define  X_INC_S1  1500
+#define  X_INC_E1  (WACOM_MAX_COORD_X - 1500)
+#define  Y_INC_S1  1500
+#define  Y_INC_E1  (WACOM_MAX_COORD_Y - 1500)
+
+#define  Y_INC_S2  500
+#define  Y_INC_E2  (WACOM_MAX_COORD_Y - 500)
+#define  Y_INC_S3  1100
+#define  Y_INC_E3  (WACOM_MAX_COORD_Y - 1100)
+
+//#define CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
+#define WACOM_DVFS_LOCK_FREQ 800000
+#define BATTERY_SAVING_MODE
+
+/*HWID to distinguish Detect Switch*/
+#define WACOM_DETECT_SWITCH_HWID 0xFFFF
+
+/*HWID to distinguish FWE1*/
+#define WACOM_FWE1_HWID 0xFFFF
+
+/*HWID to distinguish B911 Digitizer*/
+#define WACOM_DTYPE_B911_HWID 1
 
 #endif /*End of Model config*/
 
@@ -382,11 +220,7 @@ struct wacom_features {
 	int y_max;
 	int pressure_max;
 	char comstat;
-#if defined(CONFIG_MACH_P4NOTE) || defined(CONFIG_MACH_P4)
-	u8 data[COM_QUERY_NUM];
-#else
 	u8 data[COM_COORD_NUM];
-#endif
 	unsigned int fw_version;
 	int firm_update_status;
 };
@@ -395,15 +229,9 @@ struct wacom_features {
 extern struct class *sec_class;
 
 static struct wacom_features wacom_feature_EMR = {
-#if defined(CONFIG_MACH_P4NOTE) || defined(CONFIG_MACH_P4)
-	.x_max = 0x54C0,
-	.y_max = 0x34F8,
-	.pressure_max = 0xFF,
-#else
 	.x_max = WACOM_MAX_COORD_X,
 	.y_max = WACOM_MAX_COORD_Y,
 	.pressure_max = WACOM_MAX_PRESSURE,
-#endif
 	.comstat = COM_QUERY,
 	.data = {0, 0, 0, 0, 0, 0, 0},
 	.fw_version = 0x0,
@@ -426,19 +254,10 @@ struct wacom_g5_platform_data {
 	int max_pressure;
 	int min_pressure;
 	int gpio_pendct;
-#ifdef WACOM_STATE_CHECK
-#if defined(CONFIG_TARGET_LOCALE_KOR)
-#if defined(CONFIG_MACH_T0) && defined(CONFIG_TDMB_ANT_DET)
-	int gpio_esd_check;
-#endif
-#endif
-#endif
 #ifdef WACOM_PEN_DETECT
 	int gpio_pen_insert;
 #endif
-#ifdef WACOM_HAVE_FWE_PIN
 	void (*compulsory_flash_mode)(bool);
-#endif
 	int (*init_platform_hw)(void);
 	int (*exit_platform_hw)(void);
 	int (*suspend_platform_hw)(void);
@@ -477,9 +296,6 @@ struct wacom_i2c {
 	int tool;
 	s16 last_x;
 	s16 last_y;
-#ifdef WACOM_STATE_CHECK
-	struct delayed_work wac_statecheck_work;
-#endif
 #ifdef WACOM_PEN_DETECT
 	struct delayed_work pen_insert_dwork;
 	bool pen_insert;
@@ -488,10 +304,7 @@ struct wacom_i2c {
 	int invert_pen_insert;
 #endif
 #endif
-#ifdef WACOM_HAVE_FWE_PIN
 	int gpio_fwe;
-	bool have_fwe_pin;
-#endif
 #ifdef WACOM_IMPORT_FW_ALGO
 	bool use_offset_table;
 	bool use_aveTransition;
@@ -503,17 +316,11 @@ struct wacom_i2c {
 	struct wacom_g5_callbacks callbacks;
 	int (*power)(int on);
 	struct delayed_work resume_work;
-#ifdef WACOM_IRQ_WORK_AROUND
-	struct delayed_work pendct_dwork;
-#endif
 #ifdef CONFIG_SEC_TOUCHSCREEN_DVFS_LOCK
 	unsigned int cpufreq_level;
 	bool dvfs_lock_status;
 	struct delayed_work dvfs_work;
 	struct device *bus_dev;
-#endif
-#ifdef CONFIG_MACH_P4NOTE
-	bool pen_type;
 #endif
 #ifdef WACOM_CONNECTION_CHECK
 	bool connection_check;

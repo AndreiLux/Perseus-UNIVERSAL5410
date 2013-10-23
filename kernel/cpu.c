@@ -16,6 +16,7 @@
 #include <linux/mutex.h>
 #include <linux/gfp.h>
 #include <linux/suspend.h>
+#include <mach/sec_debug.h>
 
 #ifdef CONFIG_SMP
 /* Serializes the updates to cpu_online_mask, cpu_present_mask */
@@ -274,6 +275,7 @@ int __ref cpu_down(unsigned int cpu)
 	int err;
 
 	cpu_maps_update_begin();
+	sec_debug_task_log_msg(cpu, "cpudown+");
 
 	if (cpu_hotplug_disabled) {
 		err = -EBUSY;
@@ -283,6 +285,7 @@ int __ref cpu_down(unsigned int cpu)
 	err = _cpu_down(cpu, 0);
 
 out:
+	sec_debug_task_log_msg(cpu, "cpudown-");
 	cpu_maps_update_done();
 	return err;
 }
@@ -300,6 +303,7 @@ static int __cpuinit _cpu_up(unsigned int cpu, int tasks_frozen)
 		return -EINVAL;
 
 	cpu_hotplug_begin();
+	sec_debug_task_log_msg(cpu, "cpuup+");
 	ret = __cpu_notify(CPU_UP_PREPARE | mod, hcpu, -1, &nr_calls);
 	if (ret) {
 		nr_calls--;
@@ -320,6 +324,7 @@ static int __cpuinit _cpu_up(unsigned int cpu, int tasks_frozen)
 out_notify:
 	if (ret != 0)
 		__cpu_notify(CPU_UP_CANCELED | mod, hcpu, nr_calls, NULL);
+	sec_debug_task_log_msg(cpu, "cpuup-");
 	cpu_hotplug_done();
 
 	return ret;

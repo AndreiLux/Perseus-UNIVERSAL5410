@@ -49,7 +49,7 @@ int calc_checksum(unsigned char *flash_data)
 		checksum_data[2], checksum_data[3]);
 
 	for (i = 0; i < 4; i++) {
-		if (checksum_data[i] != Firmware_checksum[i+1])
+		if (checksum_data[i] != fw_chksum[i+1])
 			return -ERR_HEX;
 	}
 
@@ -76,27 +76,6 @@ int wacom_i2c_flash_cmd(struct wacom_i2c *wac_i2c)
 	int ret, len, i;
 	u8 buf[10], flashq;
 
-#if defined(CONFIG_MACH_KONA)
-	buf[0] = 0x0d;
-	buf[1] = FLASH_START0;
-	buf[2] = FLASH_START1;
-	buf[3] = FLASH_START2;
-	buf[4] = FLASH_START3;
-	buf[5] = FLASH_START4;
-	buf[6] = FLASH_START5;
-	buf[7] = 0x0d;
-
-	printk(KERN_DEBUG "epen:[jjals] w9002 running!!\n");
-
-	len = 8;
-	ret = i2c_master_send(wac_i2c->client, buf, len);
-
-	if (ret < 0) {
-		printk(KERN_ERR
-			"Sending flash command failed\n");
-		return -1;
-	}
-#else
 	buf[0] = 0x0d;
 	buf[1] = FLASH_START0;
 	buf[2] = FLASH_START1;
@@ -133,7 +112,6 @@ int wacom_i2c_flash_cmd(struct wacom_i2c *wac_i2c)
 		printk(KERN_DEBUG "epen:flash send?:%d\n", ret);
 		msleep(270);
 	}
-#endif
 
 	return 0;
 }
@@ -308,10 +286,10 @@ int wacom_i2c_flash_write(struct wacom_i2c *wac_i2c, unsigned long startAddr,
 		buf[2] = (u8) ((ulAddr & 0xff00) >> 8);
 		buf[3] = size;
 		buf[4] = bank;
-#ifdef CONFIG_MACH_T0
+#ifdef CONFIG_EPEN_WACOM_G9PM
 		/*Pass Garbage*/
 		for (i = 0; i < BLOCK_SIZE_W; i++) {
-			if (Binary[ulAddr+i] != 0xff)
+			if (fw_data[ulAddr+i] != 0xff)
 				break;
 		}
 		if (i == BLOCK_SIZE_W) {
@@ -368,8 +346,8 @@ int wacom_i2c_flash_write(struct wacom_i2c *wac_i2c, unsigned long startAddr,
 
 		sum = 0;
 		for (i = 0; i < BLOCK_SIZE_W; i++) {
-			buf[i] = Binary[ulAddr + i];
-			sum += Binary[ulAddr + i];
+			buf[i] = fw_data[ulAddr + i];
+			sum += fw_data[ulAddr + i];
 		}
 		sum = ~sum + 1;
 		buf[BLOCK_SIZE_W] = sum;
@@ -489,8 +467,8 @@ int wacom_i2c_flash_verify(struct wacom_i2c *wac_i2c, unsigned long startAddr,
 		msleep(1);
 		sum = 0;
 		for (i = 0; i < BLOCK_SIZE_W; i++) {
-			buf[i] = Binary[ulAddr + i];
-			sum += Binary[ulAddr + i];
+			buf[i] = fw_data[ulAddr + i];
+			sum += fw_data[ulAddr + i];
 		}
 		sum = ~sum + 1;
 		buf[BLOCK_SIZE_W] = sum;
@@ -539,14 +517,6 @@ int wacom_i2c_flash_verify(struct wacom_i2c *wac_i2c, unsigned long startAddr,
 		msleep(1);
 	}
 
-#if defined(CONFIG_MACH_P4NOTE)
-	if (calc_checksum(Binary)) {
-		printk(KERN_DEBUG
-			"epen:check sum not matched\n");
-		return -ERR_HEX;
-	}
-#endif
-
 	printk("\nepen:Verifying done\n");
 
 	return 0;
@@ -558,30 +528,18 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 	int ret = 0, blver = 0, mcu = 0;
 	u32 max_addr = 0, cmd_addr = 0;
 
-	if (Binary == NULL) {
+	if (fw_data == NULL) {
 		printk(KERN_ERR"epen:Data is NULL. Exit.\n");
 		return -1;
 	}
 
-#if defined(CONFIG_MACH_P4NOTE)
-	if (calc_checksum(Binary)) {
-		printk(KERN_DEBUG
-			"epen:check sum not matched\n");
-		return -ERR_HEX;
-	}
-#endif
-
-#ifdef WACOM_HAVE_FWE_PIN
-	if (wac_i2c->have_fwe_pin) {
-		wac_i2c->wac_pdata->compulsory_flash_mode(true);
-#ifdef CONFIG_MACH_T0
-		/*Reset*/
-		wac_i2c->wac_pdata->reset_platform_hw();
-		msleep(200);
-#endif
-		printk(KERN_DEBUG"epen:Set FWE\n");
-	}
-#endif
+	/*fwe1*/
+	wac_i2c->wac_pdata->compulsory_flash_mode(true);
+	/*Reset*/
+	wac_i2c->wac_pdata->reset_platform_hw();
+	msleep(200);
+	printk(KERN_DEBUG"epen:Set FWE\n");
+	
 	wake_lock(&wac_i2c->wakelock);
 
 	ret = wacom_i2c_flash_cmd(wac_i2c);
@@ -599,7 +557,7 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 
 	mcu = wacom_i2c_flash_mcuId(wac_i2c);
 	printk(KERN_DEBUG "epen:mcu:%x\n", mcu);
-	if (Mpu_type != mcu) {
+	if (mpu_type != mcu) {
 		printk(KERN_DEBUG "epen:mcu:%x\n", mcu);
 		ret = -ENXIO;
 		goto mcu_type_error;
@@ -683,17 +641,12 @@ mcu_type_error:
 
 fw_update_error:
 	wake_unlock(&wac_i2c->wakelock);
-#ifdef WACOM_HAVE_FWE_PIN
-	if (wac_i2c->have_fwe_pin) {
-		wac_i2c->wac_pdata->compulsory_flash_mode(false);
-#ifdef CONFIG_MACH_T0
-		/*Reset*/
-		wac_i2c->wac_pdata->reset_platform_hw();
-		msleep(200);
-#endif
-		printk(KERN_DEBUG"epen:Release FWE\n");
-	}
-#endif
+
+	wac_i2c->wac_pdata->compulsory_flash_mode(false);
+	/*Reset*/
+	wac_i2c->wac_pdata->reset_platform_hw();
+	msleep(200);
+	printk(KERN_DEBUG"epen:Release FWE\n");
 
 	return ret;
 }

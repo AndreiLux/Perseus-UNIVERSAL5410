@@ -1305,7 +1305,8 @@ static int s3c64xx_spi_runtime_resume(struct device *dev)
 #endif /* CONFIG_PM_RUNTIME */
 
 static const struct dev_pm_ops s3c64xx_spi_pm = {
-	SET_SYSTEM_SLEEP_PM_OPS(s3c64xx_spi_suspend, s3c64xx_spi_resume)
+	.suspend_noirq = s3c64xx_spi_suspend,
+	.resume_noirq = s3c64xx_spi_resume,
 	SET_RUNTIME_PM_OPS(s3c64xx_spi_runtime_suspend,
 			   s3c64xx_spi_runtime_resume, NULL)
 };

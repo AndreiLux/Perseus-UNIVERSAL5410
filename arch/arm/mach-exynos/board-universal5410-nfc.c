@@ -1,5 +1,6 @@
 #include <linux/gpio.h>
 #include <linux/i2c.h>
+#include <linux/i2c-gpio.h>
 #include <plat/gpio-cfg.h>
 #include <mach/regs-gpio.h>
 #include <mach/gpio.h>
@@ -33,6 +34,7 @@ static inline void nfc_setup_gpio(void)
 	int err = 0;
 	int array_size = ARRAY_SIZE(nfc_gpio_table);
 	u32 i, gpio;
+
 	for (i = 0; i < array_size; i++) {
 		gpio = nfc_gpio_table[i][0];
 
@@ -81,8 +83,26 @@ static struct i2c_board_info i2c_dev_nfc[] __initdata = {
 #endif
 };
 
+#if defined(CONFIG_MACH_HA)
+static struct i2c_gpio_platform_data i2c_nfc_platdata = {
+	.sda_pin		= GPIO_NFC_SDA_18V,
+	.scl_pin		= GPIO_NFC_SCL_18V,
+	.udelay		= 2,	/* 250 kHz */
+};
+
+static struct platform_device s3c_device_i2c13 = {
+	.name		= "i2c-gpio",
+	.id			= 13,
+	.dev.platform_data	= &i2c_nfc_platdata,
+};
+#endif
+
 void __init exynos5_universal5410_nfc_init(void)
 {
+#if defined(CONFIG_MACH_HA)
+	int ret;
+#endif
+
 #ifdef CONFIG_UNIVERSAL5410_REV06
 	if (system_rev < 9)
 		return;
@@ -93,9 +113,19 @@ void __init exynos5_universal5410_nfc_init(void)
 #endif
 	nfc_setup_gpio();
 
+#if defined(CONFIG_MACH_HA)
+	ret = i2c_register_board_info(13, i2c_dev_nfc, ARRAY_SIZE(i2c_dev_nfc));
+	if (ret < 0) {
+		pr_err("%s, i2c13 adding i2c fail(err=%d)\n", __func__, ret);
+	}
+
+	ret = platform_device_register(&s3c_device_i2c13);
+	if (ret < 0) {
+		pr_err("%s, i2c13 adding device(err=%d)\n", __func__, ret);
+	}
+#else
 	s3c_i2c3_set_platdata(NULL);
-
 	i2c_register_board_info(3, i2c_dev_nfc, ARRAY_SIZE(i2c_dev_nfc));
-
 	platform_device_register(&s3c_device_i2c3);
+#endif
 }

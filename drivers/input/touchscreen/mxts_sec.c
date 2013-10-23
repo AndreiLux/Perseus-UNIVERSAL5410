@@ -1377,38 +1377,64 @@ static struct attribute_group touchscreen_factory_attr_group = {
 };
 
 #if ENABLE_TOUCH_KEY
+static int touchkey_delta_show(struct mxt_data  *data, char *key_name)
+{
+
+	struct i2c_client *client = data->client;
+	struct mxt_fac_data *fdata = data->fdata;
+	int i;
+	u16 keydelta = 0;
+
+	/* check lock  */
+	mutex_lock(&fdata->cmd_lock);
+	fdata->cmd_is_running = true;
+	fdata->cmd_state = CMD_STATUS_RUNNING;
+	mutex_unlock(&fdata->cmd_lock);
+
+
+	/* find touch key data */
+	for (i=0 ; i < data->pdata->num_touchkey ; i++) {
+		if (!strcmp(key_name, data->pdata->touchkey[i].name))
+			break;
+	}
+
+	dev_info(&client->dev, "%s: %s touchkey delta read\n",
+			__func__, key_name);
+
+	if (i != data->pdata->num_touchkey) {
+		mxt_read_diagnostic_data(data, MXT_DIAG_KEYDELTA_MODE,
+			data->pdata->touchkey[i].deltaobj, &keydelta);
+	} else {
+		dev_info(&client->dev, "%s: Can't find %s touchkey!\n",
+			__func__, key_name);
+		return 0;
+	}
+
+	dev_info(&client->dev, "%s: %s touchkey delta read : %d\n",
+			__func__, key_name, (s16)keydelta);
+
+	/* check lock  */
+	mutex_lock(&fdata->cmd_lock);
+	fdata->cmd_is_running = false;
+	fdata->cmd_state = CMD_STATUS_WAITING;
+	mutex_unlock(&fdata->cmd_lock);
+
+	return ((s16)keydelta > 0 ? keydelta : 0);
+
+}
+
 static ssize_t touchkey_menu_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct mxt_data *data = dev_get_drvdata(dev);
-	u16 menu_sensitivity;
-	int node = 0, i;
-
-	for (i=0 ; i < data->pdata->num_touchkey ; i++) {
-		if (data->pdata->touchkey[i].keycode == KEY_MENU)
-			node = (data->pdata->touchkey[i].xnode) * data->pdata->num_ynode + (data->pdata->touchkey[i].ynode); 
-	}
-	menu_sensitivity = data->fdata->reference[node];
-
-	printk(KERN_DEBUG "[TouchKey] menu refernece[%d][%d]\n", node, menu_sensitivity);
-	return sprintf(buf, "%d\n", menu_sensitivity);
+	return sprintf(buf, "%d\n", touchkey_delta_show(data, "menu"));
 }
 
 static ssize_t touchkey_back_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct mxt_data *data = dev_get_drvdata(dev);
-	int node = 0, i;
-	u16 back_sensitivity;
- 
-	for (i=0 ; i < data->pdata->num_touchkey ; i++) {
-		if (data->pdata->touchkey[i].keycode == KEY_BACK)
-			node = (data->pdata->touchkey[i].xnode) * data->pdata->num_ynode + (data->pdata->touchkey[i].ynode); 
-	}
-	back_sensitivity = data->fdata->reference[node];
- 
-	printk(KERN_DEBUG "[TouchKey] menu refernece[%d][%d]\n", node, back_sensitivity);
-	return sprintf(buf, "%d\n", back_sensitivity);
+	return sprintf(buf, "%d\n", touchkey_delta_show(data, "back"));
 }
 
 static ssize_t get_touchkey_threshold(struct device *dev,

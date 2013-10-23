@@ -598,6 +598,9 @@ struct modem_shared {
 	 * exam: echo 1.2.3.4 > /sys/devices/virtual/misc/umts_multipdp/loopback
 	 */
 	__be32 loopback_ipaddr;
+	/* If we send the 's' or 'x' to XMM6360 modem, CP start the IPC loop
+	 * back aging test.*/
+	void (*loopback_start) (struct io_device *, struct modem_shared *);
 };
 
 struct modem_ctl {

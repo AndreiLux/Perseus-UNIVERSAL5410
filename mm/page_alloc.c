@@ -2233,8 +2233,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	bool sync_migration = false;
 	bool deferred_compaction = false;
 #ifdef CONFIG_ANDROID_WIP
-	unsigned long oom_invoke_timeout = jiffies + HZ;
-	int oom_invoke_cnt = 0;
+	unsigned long oom_invoke_timeout = jiffies + HZ/2;
 #endif
 
 	/*
@@ -2361,7 +2360,7 @@ rebalance:
 #ifdef CONFIG_ANDROID_WIP
 			if (did_some_progress)
 				pr_info("time's up : calling "
-						"__alloc_pages_may_oom(%d)\n", oom_invoke_cnt++);
+						"__alloc_pages_may_oom(o:%d gfp:0x%x)\n", order, gfp_mask);
 
 #endif
 			page = __alloc_pages_may_oom(gfp_mask, order,
@@ -5079,7 +5078,6 @@ void setup_per_zone_wmarks(void)
  */
 static void __meminit calculate_zone_inactive_ratio(struct zone *zone)
 {
-#ifndef CONFIG_ZSWAP
 	unsigned int gb, ratio;
 
 	/* Zone size in gigabytes */
@@ -5090,9 +5088,6 @@ static void __meminit calculate_zone_inactive_ratio(struct zone *zone)
 		ratio = 1;
 
 	zone->inactive_ratio = ratio;
-#else
-	zone->inactive_ratio = 1;
-#endif
 }
 
 static void __meminit setup_per_zone_inactive_ratio(void)

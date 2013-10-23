@@ -20,15 +20,15 @@
 #ifndef _LINUX_WACOM_I2C_FIRM_H
 #define _LINUX_WACOM_I2C_FIRM_H
 
-extern const unsigned int Binary_nLength;
-extern const unsigned char Mpu_type;
-extern unsigned int Firmware_version_of_file;
-extern unsigned char *Binary;
+extern const unsigned int fw_size;
+extern const unsigned char mpu_type;
+extern unsigned int fw_ver_file;
+extern unsigned char *fw_data;
 extern bool ums_binary;
-extern const char Firmware_checksum[];
-extern unsigned char *firmware_name;
+extern const char fw_chksum[];
+extern unsigned char *fw_name;
 void wacom_i2c_init_firm_data(void);
-void wacom_i2c_set_firm_data(unsigned char *Binary_new);
+void wacom_i2c_set_firm_data(unsigned char *data);
 int wacom_i2c_get_digitizer_type(void);
 
 #endif /* _LINUX_WACOM_I2C_FIRM_H */

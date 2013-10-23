@@ -148,7 +148,8 @@ IMG_IMPORT
 PVRSRV_ERROR PVRSRVMapIonHandleKM(PVRSRV_PER_PROCESS_DATA *psPerProc,
 								  IMG_HANDLE hDevCookie,
 								  IMG_HANDLE hDevMemHeap,
-								  IMG_HANDLE hIon,
+								  IMG_UINT32 ui32NumFDs,
+								  IMG_INT32  *pai32BufferFDs,
 								  IMG_UINT32 ui32Flags,
 								  IMG_UINT32 ui32ChunkCount,
 								  IMG_SIZE_T *pauiOffset,
@@ -280,7 +281,8 @@ PVRSRV_ERROR PVRSRVSwapToDCBuffer2KM(IMG_HANDLE	hDeviceKM,
 									 PVRSRV_KERNEL_SYNC_INFO **ppsSyncInfos,
 									 IMG_UINT32	ui32NumMemSyncInfos,
 									 IMG_PVOID	pvPrivData,
-									 IMG_UINT32	ui32PrivDataLength);
+									 IMG_UINT32	ui32PrivDataLength,
+									 IMG_HANDLE	*phFence);
 IMG_IMPORT
 PVRSRV_ERROR PVRSRVSwapToDCSystemKM(IMG_HANDLE	hDeviceKM,
 									IMG_HANDLE	hSwapChain);

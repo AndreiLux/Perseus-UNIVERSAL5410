@@ -123,7 +123,6 @@ EXPORT_SYMBOL(cad_pid);
 
 void (*pm_power_off_prepare)(void);
 
-/* Samsung Rooting Restriction Feature */
 #if defined CONFIG_SEC_RESTRICT_SETUID
 int sec_check_execpath(struct mm_struct *mm, char *denypath);
 #if defined CONFIG_SEC_RESTRICT_ROOTING_LOG
@@ -170,6 +169,7 @@ out:
 
 	return ret;
 }
+
 #endif // End of CONFIG_SEC_RESTRICT_SETUID
 
 /*

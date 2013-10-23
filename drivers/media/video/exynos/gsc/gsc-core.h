@@ -202,6 +202,8 @@ enum gsc_yuv_fmt {
 #define is_ver_5a (pdata->ip_ver == IP_VER_GSC_5A)
 #define is_rotation \
 	((ctx->gsc_ctrls.rotate->val == 90) || (ctx->gsc_ctrls.rotate->val == 270))
+#define is_csc_eq_709 \
+	(ctx->gsc_ctrls.csc_eq->val == V4L2_COLORSPACE_REC709)
 #define gsc_m2m_run(dev) test_bit(ST_M2M_RUN, &(dev)->state)
 #define gsc_m2m_opened(dev) test_bit(ST_M2M_OPEN, &(dev)->state)
 #define gsc_out_run(dev) test_bit(ST_OUTPUT_STREAMON, &(dev)->state)

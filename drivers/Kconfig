@@ -146,6 +146,8 @@ source "drivers/motor/Kconfig"
 
 source "drivers/sensorhub/Kconfig"
 
+source "drivers/fingerprint/Kconfig"
+
 source "drivers/battery/Kconfig"
 
 source "drivers/irda/Kconfig"
