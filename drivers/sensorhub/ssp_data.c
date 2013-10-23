@@ -39,7 +39,7 @@
 static void get_3axis_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
-	s16 iTemp = 0;
+	s16 iTemp;
 
 	iTemp = (s16)pchRcvDataFrame[(*iDataIdx)++];
 	iTemp <<= 8;
@@ -60,24 +60,24 @@ static void get_3axis_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 static void get_light_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
-	s16 iTemp = 0;
+	u16 iTemp;
 
-	iTemp = (s16)pchRcvDataFrame[(*iDataIdx)++];
+	iTemp = (u16)pchRcvDataFrame[(*iDataIdx)++];
 	iTemp <<= 8;
 	iTemp += pchRcvDataFrame[(*iDataIdx)++];
 	sensorsdata->r = iTemp;
 
-	iTemp = (s16)pchRcvDataFrame[(*iDataIdx)++];
+	iTemp = (u16)pchRcvDataFrame[(*iDataIdx)++];
 	iTemp <<= 8;
 	iTemp += pchRcvDataFrame[(*iDataIdx)++];
 	sensorsdata->g = iTemp;
 
-	iTemp = (s16)pchRcvDataFrame[(*iDataIdx)++];
+	iTemp = (u16)pchRcvDataFrame[(*iDataIdx)++];
 	iTemp <<= 8;
 	iTemp += pchRcvDataFrame[(*iDataIdx)++];
 	sensorsdata->b = iTemp;
 
-	iTemp = (s16)pchRcvDataFrame[(*iDataIdx)++];
+	iTemp = (u16)pchRcvDataFrame[(*iDataIdx)++];
 	iTemp <<= 8;
 	iTemp += pchRcvDataFrame[(*iDataIdx)++];
 	sensorsdata->w = iTemp;
@@ -86,7 +86,7 @@ static void get_light_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 static void get_pressure_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
-	int iTemp = 0;
+	int iTemp;
 
 	iTemp = (int)pchRcvDataFrame[(*iDataIdx)++];
 	iTemp <<= 16;
@@ -102,7 +102,7 @@ static void get_pressure_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	iTemp = (int)pchRcvDataFrame[(*iDataIdx)++];
 	iTemp <<= 8;
 	iTemp += (int)pchRcvDataFrame[(*iDataIdx)++];
-	sensorsdata->pressure[1] = (s16)iTemp;
+	sensorsdata->pressure[1] = iTemp;
 }
 
 static void get_gesture_sensordata(char *pchRcvDataFrame, int *iDataIdx,
@@ -133,7 +133,7 @@ static void get_proximity_rawdata(char *pchRcvDataFrame, int *iDataIdx,
 	sensorsdata->prox[0] = (u8)pchRcvDataFrame[(*iDataIdx)++];
 }
 
-static void get_factoty_data(struct ssp_data *data, int iSensorData,
+static void get_factory_data(struct ssp_data *data, int iSensorData,
 	char *pchRcvDataFrame, int *iDataIdx)
 {
 	int iIdx, iTotalLenth = 0;
@@ -192,7 +192,7 @@ static void get_factoty_data(struct ssp_data *data, int iSensorData,
 static void get_temp_humidity_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
-	s16 iTemp = 0;
+	s16 iTemp;
 
 	/* Temperature */
 	iTemp = (s16)pchRcvDataFrame[(*iDataIdx)++];
@@ -208,6 +208,38 @@ static void get_temp_humidity_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	sensorsdata->data[2] = (s16)pchRcvDataFrame[(*iDataIdx)++];
 }
 
+static void get_sig_motion_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	sensorsdata->sig_motion = (u8)pchRcvDataFrame[(*iDataIdx)++];
+}
+
+#ifdef FEATURE_STEP_SENSOR
+static void get_step_det_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	sensorsdata->step_det = (u8)pchRcvDataFrame[(*iDataIdx)++];
+}
+
+static void get_step_cnt_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	u32 iTemp = 0;
+
+	iTemp += pchRcvDataFrame[(*iDataIdx)++];
+	iTemp <<= 24;
+
+	iTemp += pchRcvDataFrame[(*iDataIdx)++];
+	iTemp <<= 16;
+
+	iTemp += pchRcvDataFrame[(*iDataIdx)++];
+	iTemp <<= 8;
+
+	iTemp += pchRcvDataFrame[(*iDataIdx)++];
+	sensorsdata->step_diff = iTemp;
+}
+#endif
+
 int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 {
 	int iDataIdx, iSensorData;
@@ -222,7 +254,7 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 			iDataIdx++;
 			iSensorData = pchRcvDataFrame[iDataIdx++];
 			if ((iSensorData < 0) ||
-				(iSensorData >= (SENSOR_MAX - 1))) {
+				(iSensorData > (SENSOR_MAX - 1))) {
 				pr_err("[SSP]: %s - Mcu data frame1 error %d\n",
 					__func__, iSensorData);
 				kfree(sensorsdata);
@@ -244,7 +276,7 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 				kfree(sensorsdata);
 				return ERROR;
 			}
-			get_factoty_data(data, iSensorData, pchRcvDataFrame,
+			get_factory_data(data, iSensorData, pchRcvDataFrame,
 				&iDataIdx);
 		} else if (pchRcvDataFrame[iDataIdx] ==
 			MSG2AP_INST_DEBUG_DATA) {
@@ -283,6 +315,14 @@ void initialize_function_pointer(struct ssp_data *data)
 	data->get_sensor_data[LIGHT_SENSOR] = get_light_sensordata;
 	data->get_sensor_data[TEMPERATURE_HUMIDITY_SENSOR] =
 		get_temp_humidity_sensordata;
+	data->get_sensor_data[SIG_MOTION_SENSOR] =
+		get_sig_motion_sensordata;
+#ifdef FEATURE_STEP_SENSOR
+	data->get_sensor_data[STEP_DETECTOR] =
+		get_step_det_sensordata;
+	data->get_sensor_data[STEP_COUNTER] =
+		get_step_cnt_sensordata;
+#endif
 
 	data->report_sensor_data[ACCELEROMETER_SENSOR] = report_acc_data;
 	data->report_sensor_data[GYROSCOPE_SENSOR] = report_gyro_data;
@@ -294,4 +334,9 @@ void initialize_function_pointer(struct ssp_data *data)
 	data->report_sensor_data[LIGHT_SENSOR] = report_light_data;
 	data->report_sensor_data[TEMPERATURE_HUMIDITY_SENSOR] =
 		report_temp_humidity_data;
+	data->report_sensor_data[SIG_MOTION_SENSOR] = report_sig_motion_data;
+#ifdef FEATURE_STEP_SENSOR
+	data->report_sensor_data[STEP_DETECTOR] = report_step_det_data;
+	data->report_sensor_data[STEP_COUNTER] = report_step_cnt_data;
+#endif
 }

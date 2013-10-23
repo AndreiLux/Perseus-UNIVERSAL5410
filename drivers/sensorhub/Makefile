@@ -31,3 +31,7 @@ obj-$(CONFIG_SENSORS_SSP_ATUC128L5HAR)	+= factory/mcu_atuc128l5har.o
 obj-$(CONFIG_SENSORS_SSP_SENSORHUB)	+= ssp_sensorhub.o
 
 obj-$(CONFIG_SENSORS_SSP_C12SD)		+= ssp_c12sd.o
+
+obj-$(CONFIG_SENSORS_SSP_ATSN01P)	+= grip/atsn01p.o
+
+obj-$(CONFIG_SENSORS_SSP_SX9500)	+= grip/sx9500.o

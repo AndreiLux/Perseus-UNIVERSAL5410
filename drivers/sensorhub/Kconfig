@@ -161,3 +161,25 @@ config SENSORS_SSP_C12SD
 	  GUVA_C12SD is made by Genicom.
           If you say yes here you get c12sd support.
 	  If you say no here c12sd will not be supported.
+
+config SENSORS_SSP_ATSN01P
+	tristate "ATSN01P Grip Sensor Support"
+	default n
+	depends on SENSORS_SSP
+	help
+	  Say Y here if you use ATSN01P.
+	  This option enables Grip sensors using
+	  AD SEMICON ATSN01P device driver.
+
+	  Say N here if you do not use ATSN01P.
+
+config SENSORS_SSP_SX9500
+	depends on SENSORS_SSP
+	tristate "SX9500 Grip Sensor Support"
+	default n
+	help
+	  Say Y here if you use SX9500.
+	  This option enables Grip sensors using
+	  SEMTECH SX9500 device driver.
+
+	  Say N here if you do not use SX9500.
