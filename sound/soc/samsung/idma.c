@@ -24,9 +24,12 @@
 #include "idma.h"
 #include "dma.h"
 #include "i2s-regs.h"
+#include "srp_alp/srp_alp.h"
 
 #define ST_RUNNING		(1<<0)
 #define ST_OPENED		(1<<1)
+
+#define CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
 
 static const struct snd_pcm_hardware idma_hardware = {
 	.info = SNDRV_PCM_INFO_INTERLEAVED |
@@ -63,16 +66,21 @@ struct idma_ctrl {
 };
 
 static struct idma_info {
-	spinlock_t	lock;
-	void		 __iomem  *regs;
-	dma_addr_t	lp_tx_addr;
+	spinlock_t		lock;
+	void __iomem		*regs;
+	dma_addr_t		lp_tx_addr;
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+	void			*dma_area;
+	struct snd_dma_buffer	sram_buf;
+	struct snd_dma_buffer	dram_buf;
+#endif
 } idma;
 
 static void idma_getpos(dma_addr_t *res, struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct idma_ctrl *prtd = runtime->private_data;
-	u32 maxcnt = runtime->buffer_size;
+	u32 maxcnt = snd_pcm_lib_buffer_bytes(substream) >> 2;
 	u32 trncnt = readl(idma.regs + I2STRNCNT) & 0xffffff;
 
 	/*
@@ -82,7 +90,7 @@ static void idma_getpos(dma_addr_t *res, struct snd_pcm_substream *substream)
 	if (prtd->state == ST_RUNNING)
 		trncnt = trncnt == 0 ? maxcnt - 1 : trncnt - 1;
 
-	*res = frames_to_bytes(runtime, trncnt);
+	*res = trncnt << 2;
 }
 
 static int idma_enqueue(struct snd_pcm_substream *substream)
@@ -168,6 +176,11 @@ static int idma_hw_params(struct snd_pcm_substream *substream,
 	struct idma_ctrl *prtd = substream->runtime->private_data;
 	u32 mod = readl(idma.regs + I2SMOD);
 	u32 ahb = readl(idma.regs + I2SAHB);
+	unsigned long rate = params_rate(params);
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+	struct snd_dma_buffer *buf;
+	bool sram_avail = false;
+#endif
 
 	ahb |= (AHB_DMARLD | AHB_INTMASK);
 	mod |= MOD_TXS_IDMA;
@@ -177,11 +190,37 @@ static int idma_hw_params(struct snd_pcm_substream *substream,
 	snd_pcm_set_runtime_buffer(substream, &substream->dma_buffer);
 	runtime->dma_bytes = params_buffer_bytes(params);
 
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+	if (runtime->dma_bytes <= 32 * 1024) {
+		sram_avail = true;
+		srp_check(SRP_ENABLE);		/* try to enable srp */
+	} else {
+		if (srp_check(SRP_DISABLE)) {	/* try to disable srp */
+			sram_avail = true;
+			srp_check(SRP_FIRM_BROKEN);	/* firmware will be erased */
+		}
+	}
+
+	if (sram_avail) {		/* sram buffer used */
+		buf = &idma.sram_buf;
+		idma.lp_tx_addr = idma.sram_buf.addr;
+		idma.dma_area   = idma.sram_buf.area;
+	} else {			/* dram buffer used */
+		buf = &idma.dram_buf;
+		idma.lp_tx_addr = idma.dram_buf.addr;
+		idma.dma_area   = idma.dram_buf.area;
+	}
+
+	prtd->start = prtd->pos = buf->addr;
+	prtd->period = params_periods(params);
+	prtd->periodsz = params_period_bytes(params);
+	prtd->end = prtd->start + runtime->dma_bytes;
+#else
 	prtd->start = prtd->pos = runtime->dma_addr;
 	prtd->period = params_periods(params);
 	prtd->periodsz = params_period_bytes(params);
 	prtd->end = runtime->dma_addr + runtime->dma_bytes;
-
+#endif
 	idma_setcallbk(substream, idma_done);
 
 	return 0;
@@ -254,6 +293,22 @@ static snd_pcm_uframes_t
 
 	return bytes_to_frames(substream->runtime, res);
 }
+
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+static int idma_copy(struct snd_pcm_substream *substream, int channel,
+	snd_pcm_uframes_t pos, void __user *buf, snd_pcm_uframes_t count)
+{
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	char *hwbuf = idma.dma_area + frames_to_bytes(runtime, pos);
+
+	if (copy_from_user(hwbuf, buf, frames_to_bytes(runtime, count)))
+		return -EFAULT;
+
+	return 0;
+}
+#else
+#define idma_copy	NULL
+#endif
 
 static int idma_mmap(struct snd_pcm_substream *substream,
 	struct vm_area_struct *vma)
@@ -349,6 +404,7 @@ static struct snd_pcm_ops idma_ops = {
 	.ioctl		= snd_pcm_lib_ioctl,
 	.trigger	= idma_trigger,
 	.pointer	= idma_pointer,
+	.copy		= idma_copy,
 	.mmap		= idma_mmap,
 	.hw_params	= idma_hw_params,
 	.hw_free	= idma_hw_free,
@@ -372,6 +428,15 @@ static void idma_free(struct snd_pcm *pcm)
 
 	buf->area = NULL;
 	buf->addr = 0;
+
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+	buf = &idma.dram_buf;
+
+	dma_free_writecombine(pcm->card->dev, buf->bytes,
+				      buf->area, buf->addr);
+	buf->area = NULL;
+#endif
+
 }
 
 static int preallocate_idma_buffer(struct snd_pcm *pcm, int stream)
@@ -380,13 +445,23 @@ static int preallocate_idma_buffer(struct snd_pcm *pcm, int stream)
 	struct snd_dma_buffer *buf = &substream->dma_buffer;
 
 	buf->dev.dev = pcm->card->dev;
+	buf->dev.type = SNDRV_DMA_TYPE_CONTINUOUS;
 	buf->private_data = NULL;
 
-	/* Assign PCM buffer pointers */
-	buf->dev.type = SNDRV_DMA_TYPE_CONTINUOUS;
 	buf->addr = idma.lp_tx_addr;
 	buf->bytes = idma_hardware.buffer_bytes_max;
 	buf->area = (unsigned char *)ioremap(buf->addr, buf->bytes);
+
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA_DRAM
+	/* info sram_buf */
+	memcpy(&idma.sram_buf, buf, sizeof(struct snd_dma_buffer));
+
+	/* info dram_buf */
+	memcpy(&idma.dram_buf, buf, sizeof(struct snd_dma_buffer));
+	buf = &idma.dram_buf;
+	buf->area = dma_alloc_writecombine(pcm->card->dev, buf->bytes,
+					   &buf->addr, GFP_KERNEL);
+#endif
 
 	return 0;
 }
