@@ -22,14 +22,10 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
-#include <linux/cma.h>
 #include <plat/devs.h>
 #include <linux/platform_data/modem.h>
 #include "modem_prj.h"
-
-#if defined(CONFIG_MACH_J_CHN_CU)
-#include <plat/gpio-cfg.h>
-#endif
+#include <linux/if_arp.h>
 
 static int xmm6262_on(struct modem_ctl *mc)
 {
@@ -123,18 +119,6 @@ static int xmm6262_force_crash_exit(struct modem_ctl *mc)
 {
 	mif_info("\n");
 
-#if defined(CONFIG_MACH_J_CHN_CU)
-		mif_info("[CP2] froce crash for CP2 - start\n");
-		gpio_direction_input(GPIO_ESC_DUMP_INT_REV02);
-		s3c_gpio_setpull(GPIO_ESC_DUMP_INT_REV02, S3C_GPIO_PULL_NONE);
-		gpio_set_value(GPIO_ESC_DUMP_INT_REV02, 1);
-
-		gpio_direction_output(GPIO_CP2_MSM_RST, 0);
-		msleep(50);
-		gpio_direction_input(GPIO_CP2_MSM_RST);
-		mif_info("[CP2] froce crash for CP2 - end\n");
-#endif
-
 	if (!mc->gpio_ap_dump_int)
 		return -ENXIO;
 
@@ -214,6 +198,28 @@ static void xmm6262_get_ops(struct modem_ctl *mc)
 	mc->ops.modem_force_crash_exit = xmm6262_force_crash_exit;
 }
 
+void xmm6262_start_loopback(struct io_device *iod, struct modem_shared *msd)
+{
+	struct link_device *ld = get_current_link(iod);
+	struct sk_buff *skb = alloc_skb(16, GFP_ATOMIC);
+	int ret;
+
+	if (unlikely(!skb))
+		return;
+	memcpy(skb_put(skb, 1), (msd->loopback_ipaddr) ? "s" : "x", 1);
+	skbpriv(skb)->iod = iod;
+	skbpriv(skb)->ld = ld;
+
+	ret = ld->send(ld, iod, skb);
+	if (ret < 0) {
+		mif_err("usb_tx_urb fail\n");
+		dev_kfree_skb_any(skb);
+	}
+	mif_info("Send loopback key '%s'\n",
+					(msd->loopback_ipaddr) ? "s" : "x");
+
+}
+
 int xmm6262_init_modemctl_device(struct modem_ctl *mc,
 			struct modem_data *pdata)
 {
@@ -242,6 +248,10 @@ int xmm6262_init_modemctl_device(struct modem_ctl *mc,
 		mc->irq_sim_detect = gpio_to_irq(mc->gpio_sim_detect);
 
 	xmm6262_get_ops(mc);
+	if (pdata->cp_force_crash)
+		mc->ops.modem_force_crash_exit
+			= (int (*)(struct modem_ctl *))pdata->cp_force_crash;
+	mc->msd->loopback_start = xmm6262_start_loopback;
 
 	ret = request_irq(mc->irq_phone_active, phone_active_irq_handler,
 				IRQF_NO_SUSPEND | IRQF_TRIGGER_HIGH,
