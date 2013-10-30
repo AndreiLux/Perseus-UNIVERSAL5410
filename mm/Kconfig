@@ -431,3 +431,7 @@ config CMA_BEST_FIT
 	  the number of allocated regions and usually much smaller).  It
 	  allocates area from the smallest hole that is big enough for
 	  allocation in question.
+
+config FADV_NOACTIVE
+	bool "fadvise noactive option support"
+	default n
