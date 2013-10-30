@@ -60,6 +60,7 @@
 static struct srp_info srp;
 static DEFINE_MUTEX(srp_mutex);
 static DEFINE_SPINLOCK(lock);
+static DEFINE_SPINLOCK(check_lock);
 static DEFINE_SPINLOCK(lock_intr);
 static DECLARE_WAIT_QUEUE_HEAD(read_wq);
 static DECLARE_WAIT_QUEUE_HEAD(decinfo_wq);
@@ -74,6 +75,10 @@ static void request_pm_get_sync(void)
 	pm_runtime_get_sync(&srp.pdev->dev);
 	srp_core_resume();
 }
+
+int srp_disable;
+int srp_firmware_broken;
+
 
 static void request_pm_put_sync(void)
 {
@@ -97,6 +102,34 @@ static int srp_check_sound_list(void)
 	}
 	return ok;
 }
+
+int srp_check(int noti)
+{
+	int ret = 0;
+
+	mutex_lock(&srp_mutex);
+
+	srp_info("%s : noti : %d\n", __func__, noti);
+
+	if (noti == SRP_DISABLE) { /* Disable flag set to disable */
+		if (srp.is_opened) {
+			mutex_unlock(&srp_mutex);
+			return 0; /* return fail */
+		} else {
+			srp_disable = 1; /* flag set */
+			mutex_unlock(&srp_mutex);
+			return 1; /* return success */
+		}
+	} else if (noti == SRP_ENABLE) { /* Disable flag set to enable */
+		if (!srp_firmware_broken)
+			srp_disable = 0; /* flag set */
+	} else if (noti == SRP_FIRM_BROKEN) /* srp firmware broken noti flag */
+		srp_firmware_broken = 1;
+
+	mutex_unlock(&srp_mutex);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(srp_check);
 
 void srp_prepare_pm(void *info)
 {
@@ -441,10 +474,14 @@ void srp_core_reset(void)
 	writel(RUN, srp.commbox + SRP_CONT);
 	srp_pending_ctrl(RUN);
 
+
 	deadline = jiffies + (HZ / 2);
 	do {
 		/* Waiting for completed suspend mode */
 		if (srp.hw_reset_stat) {
+			/* Reset flag for HQ audio */
+			srp_disable = 0;
+			srp_firmware_broken = 0;
 			ret = 1;
 			break;
 		}
@@ -808,12 +845,12 @@ static long srp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case SRP_GET_OBUF_INFO:
 		ret = copy_from_user(&srp.obuf_info, argp,
 				sizeof(struct srp_buf_info));
-		if (!ret) {
-			srp.obuf_info.addr = srp.obuf_info.mmapped_addr
-							+ obuf.offset;
-			srp.obuf_info.size = obuf.size;
-			srp.obuf_info.num = obuf.num;
-		}
+		srp.obuf_info.mmapped_size = obuf.size * obuf.num
+						+ obuf.offset;
+		srp.obuf_info.addr = srp.obuf_info.mmapped_addr
+						+ obuf.offset;
+		srp.obuf_info.size = obuf.size;
+		srp.obuf_info.num = obuf.num;
 
 		ret = copy_to_user(argp, &srp.obuf_info,
 					sizeof(struct srp_buf_info));
@@ -887,6 +924,13 @@ static int srp_open(struct inode *inode, struct file *file)
 	srp_info("Opened!\n");
 
 	mutex_lock(&srp_mutex);
+
+	if(srp_disable){
+		srp_err("Not use SRP for High Quality Audio.\n");
+		mutex_unlock(&srp_mutex);
+		return -ENXIO;
+	}
+
 	if (!srp.is_loaded) {
 		srp_err("Not loaded srp firmware.\n");
 		mutex_unlock(&srp_mutex);
