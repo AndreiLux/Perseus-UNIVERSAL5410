@@ -119,56 +119,10 @@ static struct sec_therm_adc_table temper_table_ap[] = {
 	{1789,	-200},
 };
 
-/* when the next level is same as prev, returns -1 */
-static int get_midas_siop_level(int temp)
-{
-	static int prev_temp = 400;
-	static int prev_level;
-	int level = -1;
-
-	if (temp > prev_temp) {
-		if (temp >= 540)
-			level = 4;
-		else if (temp >= 530)
-			level = 3;
-		else if (temp >= 480)
-			level = 2;
-		else if (temp >= 440)
-			level = 1;
-		else
-			level = 0;
-	} else {
-		if (temp < 410)
-			level = 0;
-		else if (temp < 440)
-			level = 1;
-		else if (temp < 480)
-			level = 2;
-		else if (temp < 530)
-			level = 3;
-		else
-			level = 4;
-
-		if (level > prev_level)
-			level = prev_level;
-	}
-
-	prev_temp = temp;
-	if (prev_level == level)
-		return -1;
-
-	prev_level = level;
-
-	return level;
-}
-
 static struct sec_therm_platform_data sec_therm_pdata = {
 	.adc_channel	= 0,
 	.adc_arr_size	= ARRAY_SIZE(temper_table_ap),
 	.adc_table	= temper_table_ap,
-	.polling_interval = 30 * 1000, /* msecs */
-	.get_siop_level = get_midas_siop_level,
-	.no_polling	= 1,
 };
 
 struct platform_device sec_device_thermistor = {

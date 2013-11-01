@@ -32,16 +32,11 @@ struct sec_therm_adc_table {
  * @adc_channel: adc channel that connected to thermistor
  * @adc_table: array of adc to temperature data
  * @adc_arr_size: size of adc_table
- * @polling_interval: interval for polling thermistor (msecs)
- * @no_polling: when true use direct read, no polling work
  */
 struct sec_therm_platform_data {
 	unsigned int adc_channel;
 	unsigned int adc_arr_size;
 	struct sec_therm_adc_table *adc_table;
-	unsigned int polling_interval;
-	int (*get_siop_level)(int);
-	bool no_polling;
 };
 
 extern struct platform_device sec_device_thermistor;
