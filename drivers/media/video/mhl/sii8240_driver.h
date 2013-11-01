@@ -27,6 +27,7 @@
 #include <linux/timer.h>
 #include <linux/switch.h>
 #include <linux/sii8240.h>
+#include <linux/wakelock.h>
 
 /* for factory test process */
 #define CONFIG_SS_FACTORY
@@ -951,7 +952,7 @@ struct mhl_timing {
 #ifdef SII8240_CHECK_MONITOR
 #define MC_FC_RET_OK 0
 #define MC_FC_RET_ERR_INVALID 1
-#define MC_FC_HDCP_VALUE ((uint32_t)(-105))
+#define MC_FC_HDCP_VALUE 0x83000000
 /* Use the arch_extension sec pseudo op before switching to secure world */
 #if defined(__GNUC__) && \
 defined(__GNUC_MINOR__) && \
@@ -964,34 +965,34 @@ defined(__GNUC_PATCHLEVEL__) && \
 
 struct sii8240_data;
 struct sii8240_data {
-	struct sii8240_platform_data            *pdata;
+	struct sii8240_platform_data	*pdata;
 	/* single device entry-point,e.g. /dev/mhl; all the factory-related
 	* sysfs entries,debugfs and class-creation etc should be
 	* done on this device */
-	struct device                           mhl_dev;
+	struct device			mhl_dev;
 	/* Notifier block for registering MHL callback function.The callback
 	* function will serve as entry-point into the MHL driver from Board
 	* file or connector drivers(USB-type, 30-pin or 11-pin) */
-	struct notifier_block                   mhl_nb;
+	struct notifier_block		mhl_nb;
 
-	struct mutex                            lock;
-	struct sii8240_regs_cache               regs;
-	wait_queue_head_t                       wq;
-	int                                     irq;
-	bool					irq_enabled;
+	struct mutex			lock;
+	struct sii8240_regs_cache	regs;
+	wait_queue_head_t		wq;
+	int				irq;
+	bool				irq_enabled;
 
-	enum mhl_state                          state;
-	enum rgnd_state                         rgnd;
-	enum mhl_attached_type			muic_state;
+	enum mhl_state			state;
+	enum rgnd_state			rgnd;
+	enum mhl_attached_type		muic_state;
 
-	bool                                    cbus_ready;
-	struct mutex                            cbus_lock;
-	struct completion                       cbus_complete;
-	struct work_struct                      cbus_work;
-	struct workqueue_struct			*cbus_cmd_wqs;
-	struct list_head                        cbus_data_list;
+	bool				cbus_ready;
+	struct mutex			cbus_lock;
+	struct completion		cbus_complete;
+	struct work_struct		cbus_work;
+	struct workqueue_struct		*cbus_cmd_wqs;
+	struct list_head		cbus_data_list;
 
-	struct mutex                            msc_lock;
+	struct mutex			msc_lock;
 
 	/*mhl tx configuration*/
 	u8 aviInfoFrame[INFO_BUFFER];
@@ -1020,23 +1021,25 @@ struct sii8240_data {
 	u8 connected_ready;
 
 	bool hdcp_support;
-	struct input_dev                        *input_dev;
-	struct mutex                            input_lock;
-	u16                                     keycode[SII8240_RCP_NUM_KEYS];
-	struct work_struct              mhl_power_on;
-	struct work_struct              cbus_cmd_work;
-	struct work_struct              avi_control_work;
-	struct work_struct              redetect_work;
+	struct input_dev		*input_dev;
+	struct mutex			input_lock;
+	u16				keycode[SII8240_RCP_NUM_KEYS];
+	struct work_struct		mhl_power_on;
+	struct work_struct		cbus_cmd_work;
+	struct work_struct		avi_control_work;
+	struct work_struct		redetect_work;
 	struct workqueue_struct		*avi_cmd_wqs;
 #ifdef SFEATURE_UNSTABLE_SOURCE_WA
-	u8			r281;
-	struct timer_list	avi_check_timer;
+	u8				r281;
+	struct timer_list		avi_check_timer;
+	struct work_struct		avi_check_work;
 #endif
-	struct switch_dev mhl_event_switch;
+	struct switch_dev		mhl_event_switch;
+	struct wake_lock		mhl_wake_lock;
 #ifdef SII8240_CHECK_MONITOR
-	struct work_struct			mhl_link_monitor_work;
-	int monitor_cmd;
-	struct timer_list	mhl_timer;
+	struct work_struct		mhl_link_monitor_work;
+	int				monitor_cmd;
+	struct timer_list		mhl_timer;
 #endif
 };
 uint8_t *sii8240_get_mhl_edid(void);
