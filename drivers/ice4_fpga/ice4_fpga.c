@@ -524,6 +524,7 @@ static void ir_remocon_work(struct ice4_fpga_data *ir_data, int count)
 	int end_data;
 	int emission_time;
 	int ack_pin_onoff;
+	int retry_count = 0;
 
 #if defined(DEBUG)
 	u8 *temp;
@@ -592,6 +593,7 @@ static void ir_remocon_work(struct ice4_fpga_data *ir_data, int count)
 
 	data->count = 2;
 
+#if 0
 	end_data = data->i2c_block_transfer.data[count-2] << 8
 		| data->i2c_block_transfer.data[count-1];
 	emission_time = \
@@ -599,13 +601,25 @@ static void ir_remocon_work(struct ice4_fpga_data *ir_data, int count)
 	sleep_timing = emission_time - 130;
 	if (sleep_timing > 0)
 		msleep(sleep_timing);
-
+#endif
 	emission_time = \
-		(1000 * (data->ir_sum) / (data->ir_freq)) + 50;
+		(1000 * (data->ir_sum) / (data->ir_freq));
 	if (emission_time > 0)
 		msleep(emission_time);
-		printk(KERN_INFO "%s: emission_time = %d\n",
+
+	printk(KERN_INFO "%s: emission_time = %d\n",
 					__func__, emission_time);
+
+	while (!gpio_get_value(GPIO_IRDA_IRQ)) {
+		mdelay(10);
+		printk(KERN_INFO "%s : %d try to check IRDA_IRQ\n",
+					__func__, retry_count);
+		retry_count++;
+
+		if (retry_count > 5) {
+			break;
+		}
+	}
 
 	if (gpio_get_value(GPIO_IRDA_IRQ)) {
 		printk(KERN_INFO "%s : %d Sending IR OK!\n",
