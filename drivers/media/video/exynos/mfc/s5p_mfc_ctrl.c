@@ -471,19 +471,32 @@ void s5p_mfc_deinit_hw(struct s5p_mfc_dev *dev)
 int s5p_mfc_sleep(struct s5p_mfc_dev *dev)
 {
 	struct s5p_mfc_ctx *ctx;
+	int new_ctx;
 	int ret;
 
 	mfc_debug_enter();
 
 	if (!dev) {
-		mfc_err("no mfc device to run\n");
-		return -EINVAL;
+		mfc_info("No mfc device to run\n");
+		ret = 0;
+		return ret;
 	}
 
-	ctx = dev->ctx[dev->curr_ctx];
+	spin_lock_irq(&dev->condlock);
+	new_ctx = s5p_mfc_get_new_ctx(dev);
+	spin_unlock_irq(&dev->condlock);
+
+	if (new_ctx < 0) {
+		mfc_info("No ctx is scheduled to be run\n");
+		ret = 0;
+		return ret;
+	}
+
+	ctx = dev->ctx[new_ctx];
 	if (!ctx) {
-		mfc_err("no mfc context to run\n");
-		return -EINVAL;
+		mfc_info("No ctx: not need to enter suspend\n");
+		ret = 0;
+		return ret;
 	}
 
 	ret = wait_event_interruptible_timeout(ctx->queue,
