@@ -4015,9 +4015,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	/* MDNIE setting */
 	s3c_mdnie_hw_init();
 	s3c_mdnie_set_size();
-#ifdef CONFIG_MACH_V1
-	mdnie_update(g_mdnie, 1);
-#endif
+
 	/* FIMD , IELCD Enable video out */
 	s3c_ielcd_display_on();
 	s3c_fimd1_display_on();
@@ -4389,7 +4387,6 @@ static int s3c_fb_enable(struct s3c_fb *sfb)
 	s3c_ielcd_setup();
 	/* MDNIE setting */
 	s3c_mdnie_set_size();
-	mdnie_update(g_mdnie, 1);
 
 	/* FIMD , IELCD Enable video out */
 	s3c_ielcd_display_on();
@@ -4577,7 +4574,6 @@ static int s3c_fb_resume(struct device *dev)
 	s3c_ielcd_setup();
 	/* MDNIE setting */
 	s3c_mdnie_set_size();
-	mdnie_update(g_mdnie, 1);
 
 	/* FIMD , IELCD Enable video out */
 	s3c_ielcd_display_on();

@@ -141,7 +141,7 @@ int mdnie_check_firmware(const char *path, char *name)
 	if (IS_ERR_OR_NULL(ptr) || size <= 0) {
 		pr_err("%s: file open skip %s\n", __func__, path);
 		KFREE(ptr);
-		return 0;
+		return -EPERM;
 	}
 
 	ret = (strstr(ptr, name) != NULL) ? 1 : 0;
@@ -162,7 +162,7 @@ int mdnie_request_firmware(const char *path, u16 **buf, const char *name)
 	if (IS_ERR_OR_NULL(ptr) || size <= 0) {
 		pr_err("%s: file open skip %s\n", __func__, path);
 		KFREE(ptr);
-		return ret;
+		return -EPERM;
 	}
 
 	dp = kzalloc(size, GFP_KERNEL);
