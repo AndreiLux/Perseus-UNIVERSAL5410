@@ -123,9 +123,12 @@
 #define HOT_95			95
 #define HOT_109			104
 #define HOT_110			105
+#define MEM_TH_TEMP1		75
+#define MEM_TH_TEMP2		85
 
 static int old_cold;
 static int old_hot;
+static int old_mif;
 
 static bool is_suspending;
 
@@ -712,6 +715,14 @@ void exynos_tmu_call_notifier(int cold, int hot)
 	}
 }
 
+void exynos_tmu_mif_call_notifier(int event)
+{
+	if (old_mif != event) {
+		blocking_notifier_call_chain(&exynos_tmu_notifier, event, &old_mif);
+		old_mif = event;
+	}
+}
+
 /*
  * TMU treats temperature as a mapped temperature code.
  * The temperature is converted differently depending on the calibration type.
@@ -919,6 +930,12 @@ extern unsigned int g_cpufreq;
 extern unsigned int g_miffreq;
 extern unsigned int g_intfreq;
 extern unsigned int g_g3dfreq;
+
+extern bool mif_is_probed;
+static bool check_mif_probed(void)
+{
+	return mif_is_probed;
+}
 #endif
 
 static int exynos_tmu_read(struct exynos_tmu_data *data)
@@ -927,6 +944,7 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 	int temp, i, max = INT_MIN, min = INT_MAX;
 	int cold_event = TMU_NORMAL;
 	int hot_event = TMU_NORMAL;
+	int mif_event = 0;
 	int alltemp[4] = {0,};
 
 	if (!th_zone || !th_zone->therm_dev)
@@ -961,6 +979,13 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 	else if (old_hot != TMU_95 && max <= HOT_95)
 		hot_event = TMU_95;
 
+	if (max <= MEM_TH_TEMP1)
+		mif_event = MEM_TH_LV1;
+	else if (max > MEM_TH_TEMP1 && max < MEM_TH_TEMP2)
+		mif_event = MEM_TH_LV2;
+	else if (max >= MEM_TH_TEMP2)
+		mif_event = MEM_TH_LV3;
+
 #ifdef CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ
 	if (hot_event >= HOT_95)
 		pr_info("[TMU] POLLING: temp=%d, cpu=%d, int=%d, mif=%d, hot_event(for aref)=%d\n",
@@ -984,6 +1009,9 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 	th_zone->therm_dev->last_temperature = max;
 
 	exynos_tmu_call_notifier(cold_event, hot_event);
+
+	if (check_mif_probed())
+		exynos_tmu_mif_call_notifier(mif_event);
 
 	return max;
 }
@@ -1040,6 +1068,7 @@ static int exynos_pm_notifier(struct notifier_block *notifier,
 	case PM_SUSPEND_PREPARE:
 		is_suspending = true;
 		exynos_tmu_call_notifier(TMU_COLD, old_hot);
+		exynos_tmu_mif_call_notifier(MEM_TH_LV2);
 		break;
 	case PM_POST_SUSPEND:
 		is_suspending = false;
