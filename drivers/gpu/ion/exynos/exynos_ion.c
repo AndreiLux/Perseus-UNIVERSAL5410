@@ -493,6 +493,7 @@ static void ion_exynos_contig_heap_unmap_dma(struct ion_heap *heap,
 {
 	if (buffer->sg_table)
 		sg_free_table(buffer->sg_table);
+	kfree(buffer->sg_table);
 }
 
 static int ion_exynos_contig_heap_map_user(struct ion_heap *heap,
