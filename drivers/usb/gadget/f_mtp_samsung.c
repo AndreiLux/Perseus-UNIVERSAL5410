@@ -1067,6 +1067,14 @@ static long  mtpg_ioctl(struct file *fd, unsigned int code, unsigned long arg)
 		status = dev->read_send_result;
 		break;
 	}
+	case MTP_VBUS_DISABLE:
+		printk(KERN_DEBUG "[%s] line=[%d] \n",
+							__func__, __LINE__);
+		if (dev->cdev && dev->cdev->gadget) {
+			usb_gadget_vbus_disconnect(cdev->gadget);
+			printk(KERN_DEBUG "Restricted policy so disconnecting mtp gadget\n");
+		}
+		break;
 	default:
 		status = -ENOTTY;
 	}
