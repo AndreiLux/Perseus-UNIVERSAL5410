@@ -332,7 +332,7 @@ static irqreturn_t sec_pmic_irq_thread(int irq, void *data)
 		dev_err(sec_pmic->dev,
 			"Unknown device type %d\n",
 			sec_pmic->device_type);
-		return -EINVAL;
+		return IRQ_NONE;
 	}
 
 	ret = sec_bulk_read(sec_pmic, reg_int1,
