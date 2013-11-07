@@ -886,6 +886,13 @@ config ANDROID_OOM_KILLER
 	  Hence, it makes more sense that we select the oom victim
 	  as android does when LMK is invoked.
 
+config INTERNAL_ISP_START_CAMERA
+	bool "Patch for internal isp start-up case"
+	default n
+	help
+	  To help fast memory allocation for camera start-up case
+
+
 config SEC_LOG
 	default n
 	bool "Enable support for sec_log" if EMBEDDED

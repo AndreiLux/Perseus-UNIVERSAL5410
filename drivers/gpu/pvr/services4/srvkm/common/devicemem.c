@@ -1293,10 +1293,19 @@ IMG_VOID PVRSRVIonBufferSyncRelease(PVRSRV_ION_SYNC_INFO *psIonSyncInfo)
 
  @Input	   psPerProc : PerProcess data
  @Input    hDevCookie : Device node cookie
- @Input    hDevMemContext : Device memory context cookie
- @Input    hIon : Handle to ION buffer
+ @Input    hDevMemHeap : Heap ion handles are mapped into
+ @Input    ui32NumBuffers : Number of ion handles to map. (If one handle is being
+                            mapped, this should be 1, not 0.)
+ @Input    phIon : Array of ui32NumBuffers ion handles (fds)
  @Input    ui32Flags : Mapping flags
- @Input    ui32Size : Mapping size
+ @Input    ui32ChunkCount : If ui32NumBuffers is 1, this is the number of
+                            "chunks" specified to be mapped into device-virtual
+                            address space. If ui32NumBuffers > 1, it is ignored.
+ @Input    pauiOffset : Array of offsets in device-virtual address space to map
+                        "chunks" of physical from the ion allocation.
+ @Input    pauiSize : Array of sizes in bytes of device-virtual address space to
+                      map "chunks" of physical from the ion allocation.
+ @Input    puiIonBufferSize : Size in bytes of resulting device-virtual mapping.
  @Output   ppsKernelMemInfo: Output kernel meminfo if successful
 
  @Return   PVRSRV_ERROR  :
@@ -1306,7 +1315,8 @@ IMG_EXPORT
 PVRSRV_ERROR PVRSRVMapIonHandleKM(PVRSRV_PER_PROCESS_DATA *psPerProc,
 								  IMG_HANDLE hDevCookie,
 								  IMG_HANDLE hDevMemHeap,
-								  IMG_HANDLE hIon,
+								  IMG_UINT32 ui32NumFDs,
+								  IMG_INT32  *pi32BufferFDs,
 								  IMG_UINT32 ui32Flags,
 								  IMG_UINT32 ui32ChunkCount,
 								  IMG_SIZE_T *pauiOffset,
@@ -1337,7 +1347,7 @@ PVRSRV_ERROR PVRSRVMapIonHandleKM(PVRSRV_PER_PROCESS_DATA *psPerProc,
 		PVR_DPF((PVR_DBG_ERROR, "%s: Invalid params", __FUNCTION__));
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
-	
+
 	for (i=0;i<ui32ChunkCount;i++)
 	{
 		if ((pauiOffset[i] & HOST_PAGEMASK) != 0)
@@ -1367,17 +1377,30 @@ PVRSRV_ERROR PVRSRVMapIonHandleKM(PVRSRV_PER_PROCESS_DATA *psPerProc,
 	OSMemSet(psNewKernelMemInfo, 0, sizeof(PVRSRV_KERNEL_MEM_INFO));
 
 	/* Import the ION buffer into our ion_client and DMA map it */
-	eError = IonImportBufferAndAquirePhysAddr(psPerProcEnv->psIONClient,
-											  hIon,
-											  &ui32PageCount,
-											  &pasSysPhysAddr,
-											  &psNewKernelMemInfo->pvLinAddrKM,
-											  &hPriv,
-											  &hUnique);
+	eError = IonImportBufferAndAcquirePhysAddr(psPerProcEnv->psIONClient,
+											   ui32NumFDs,
+											   pi32BufferFDs,
+											   &ui32PageCount,
+											   &pasSysPhysAddr,
+											   &psNewKernelMemInfo->pvLinAddrKM,
+											   &hPriv,
+											   &hUnique);
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to get ion buffer/buffer phys addr", __FUNCTION__));
-		goto exitFailedHeap;
+		goto exitFailedImport;
+	}
+
+	/*
+		Make sure the number of pages detected by the ion import are at least
+		the size of the total chunked region
+	*/
+	if(ui32PageCount * PAGE_SIZE < uiMapSize)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: ion allocator returned fewer page addresses "
+								"than specified chunk size(s)", __FUNCTION__));
+		eError = PVRSRV_ERROR_INVALID_PARAMS;
+		goto exitFailedAdjustedAlloc; 
 	}
 
 	/*
@@ -1400,7 +1423,7 @@ PVRSRV_ERROR PVRSRVMapIonHandleKM(PVRSRV_PER_PROCESS_DATA *psPerProc,
 		OSMemCopy(&pasAdjustedSysPhysAddr[uiAdjustOffset],
 				  &pasSysPhysAddr[pauiOffset[i]/HOST_PAGESIZE()],
 				  (pauiSize[i]/HOST_PAGESIZE()) * sizeof(IMG_SYS_PHYADDR));
-		
+
 		uiAdjustOffset += pauiSize[i]/HOST_PAGESIZE();
 	}
 
@@ -1500,7 +1523,7 @@ exitFailedWrap:
 			  IMG_NULL);
 exitFailedAdjustedAlloc:
 	IonUnimportBufferAndReleasePhysAddr(hPriv);
-exitFailedHeap:
+exitFailedImport:
 	OSFreeMem(PVRSRV_PAGEABLE_SELECT,
 			  sizeof(PVRSRV_KERNEL_MEM_INFO),
 			  psNewKernelMemInfo,
@@ -1709,12 +1732,13 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVWrapExtMemoryKM(IMG_HANDLE				hDevCookie,
 	IMG_SIZE_T          uPageCount = 0;
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			"PVRSRVWrapExtMemoryKM (uSize=0x%x, uPageOffset=0x%x, bPhysContig=%d, extSysPAddr=" SYSPADDR_FMT
+			"PVRSRVWrapExtMemoryKM (uSize=0x%" SIZE_T_FMT_LEN "x, uPageOffset=0x%"
+			SIZE_T_FMT_LEN "x, bPhysContig=%d, extSysPAddr=" SYSPADDR_FMT
 			", pvLinAddr=%p, ui32Flags=%u)",
 			uByteSize,
 			uPageOffset,
 			bPhysContig,
-			psExtSysPAddr->uiAddr,
+			psExtSysPAddr?psExtSysPAddr->uiAddr:0x0,
 			pvLinAddr,
 			ui32Flags));
 
@@ -1764,6 +1788,18 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVWrapExtMemoryKM(IMG_HANDLE				hDevCookie,
   		   we shouldn't trust what the user says here
   		*/
 		bPhysContig = IMG_FALSE;
+	}
+	else
+	{
+		if (psExtSysPAddr)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "PVRSRVWrapExtMemoryKM: invalid parameter, physical address passing is not supported"));
+		}
+		else
+		{
+			PVR_DPF((PVR_DBG_ERROR, "PVRSRVWrapExtMemoryKM: invalid parameter, no address specificed"));
+		}
+		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
 	/* Choose the heap to map to */

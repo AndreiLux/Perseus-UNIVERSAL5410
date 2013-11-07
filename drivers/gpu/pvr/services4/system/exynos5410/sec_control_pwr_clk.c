@@ -111,7 +111,7 @@ void sec_gpu_vol_clk_change(int sgx_clock, int sgx_voltage)
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 	if (sec_gpu_power_on) {
 
-		if (sgx_clock >= sec_gpu_top_clock) {
+	if (sgx_clock >= sec_gpu_top_clock) {
 	#ifdef CONFIG_ARM_EXYNOS_IKS_CPUFREQ
 			pm_qos_update_request(&exynos5_g3d_cpu_qos, qos_cpu_freq);
 	#else

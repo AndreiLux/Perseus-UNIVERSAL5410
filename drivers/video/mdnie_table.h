@@ -26,6 +26,24 @@ static unsigned short tune_ebook_cabc[] = {
 	END_SEQ, 0x0000,
 };
 
+static unsigned short tune_email[] = {
+	0x0000, 0x0000,	/*BANK 0*/
+	0x0008, 0x0000,	/*SCR2 CC1 | CS2 DE1 | LoG8 WIENER4 NR2 HDR1*/
+	0x0009, 0x0000,	/*MCM off*/
+	0x000a, 0x0000,	/*UC off*/
+	0x00ff, 0x0000,	/*Mask Release*/
+	END_SEQ, 0x0000,
+};
+
+static unsigned short tune_email_cabc[] = {
+	0x0000, 0x0000,	/*BANK 0*/
+	0x0008, 0x0000,	/*SCR2 CC1 | CS2 DE1 | LoG8 WIENER4 NR2 HDR1*/
+	0x0009, 0x0000,	/*MCM off*/
+	0x000a, 0x0000,	/*UC off*/
+	0x00ff, 0x0000,	/*Mask Release*/
+	END_SEQ, 0x0000,
+};
+
 static unsigned short tune_camera[] = {
 	0x0000, 0x0000,	/*BANK 0*/
 	0x0008, 0x0000,	/*SCR2 CC1 | CS2 DE1 | LoG8 WIENER4 NR2 HDR1*/
@@ -392,6 +410,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"dynamic_vt",		tune_dynamic_vt},
 			{"dynamic_browser",	tune_dynamic_browser},
 			{"ebook",		tune_ebook},
+			{"email",		tune_email}
 		}, {
 			{"standard_ui",		tune_standard_ui},
 			{"standard_video",	tune_standard_video},
@@ -403,6 +422,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"standard_vt",		tune_standard_vt},
 			{"standard_browser",	tune_standard_browser},
 			{"ebook",		tune_ebook},
+			{"email",		tune_email}
 		}, {
 			{"movie_ui",		tune_movie_ui},
 			{"movie_video",		tune_movie_video},
@@ -414,6 +434,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"movie_vt",		tune_movie_vt},
 			{"movie_browser",	tune_movie_browser},
 			{"ebook",		tune_ebook},
+			{"email",		tune_email}
 		}, {
 			{"auto_ui",		tune_auto_ui},
 			{"auto_video",		tune_auto_video},
@@ -425,6 +446,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"auto_vt",		tune_auto_vt},
 			{"auto_browser",	tune_auto_browser},
 			{"ebook",		tune_ebook},
+			{"email",		tune_email}
 		},
 	}, {
 		{
@@ -438,6 +460,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"dynamic_vt_cabc",		tune_dynamic_vt_cabc},
 			{"dynamic_browser_cabc",	tune_dynamic_browser_cabc},
 			{"ebook_cabc",			tune_ebook_cabc},
+			{"email_cabc",			tune_email_cabc}
 		}, {
 			{"standard_ui_cabc",		tune_standard_ui_cabc},
 			{"standard_video_cabc",		tune_standard_video_cabc},
@@ -449,6 +472,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"standard_vt_cabc",		tune_standard_vt_cabc},
 			{"standard_browser_cabc",	tune_standard_browser_cabc},
 			{"ebook_cabc",			tune_ebook_cabc},
+			{"email_cabc",			tune_email_cabc}
 		}, {
 			{"movie_ui_cabc",		tune_movie_ui_cabc},
 			{"movie_video_cabc",		tune_movie_video_cabc},
@@ -459,7 +483,8 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"movie_gallery_cabc",		tune_movie_gallery_cabc},
 			{"movie_vt_cabc",		tune_movie_vt_cabc},
 			{"movie_browser_cabc",		tune_movie_browser_cabc},
-			{"ebook_cabc", 			tune_ebook_cabc},
+			{"ebook_cabc",			tune_ebook_cabc},
+			{"email_cabc",			tune_email_cabc}
 		}, {
 			{"auto_ui",			tune_auto_ui_cabc},
 			{"auto_video",			tune_auto_video_cabc},
@@ -471,6 +496,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"auto_vt",			tune_auto_vt_cabc},
 			{"auto_browser",		tune_auto_browser_cabc},
 			{"ebook_cabc",			tune_ebook_cabc},
+			{"email_cabc",			tune_email_cabc}
 		},
 	},
 };
@@ -488,6 +514,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"dynamic_vt",		tune_dynamic_vt},
 			{"dynamic_browser",	tune_dynamic_browser},
 			{"ebook",		tune_ebook},
+			{"email",		tune_email}
 		}, {
 			{"standard_ui",		tune_standard_ui},
 			{"standard_video",	tune_standard_video},
@@ -499,6 +526,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"standard_vt",		tune_standard_vt},
 			{"standard_browser",	tune_standard_browser},
 			{"ebook",		tune_ebook},
+			{"email",		tune_email}
 		}, {
 			{"natural_ui",		tune_natural_ui},
 			{"natural_video",	tune_natural_video},
@@ -510,6 +538,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"natural_vt",		tune_natural_vt},
 			{"natural_browser",	tune_natural_browser},
 			{"ebook",		tune_ebook},
+			{"email",		tune_email}
 		}, {
 			{"movie_ui",		tune_movie_ui},
 			{"movie_video",		tune_movie_video},
@@ -521,6 +550,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"movie_vt",		tune_movie_vt},
 			{"movie_browser",	tune_movie_browser},
 			{"ebook",		tune_ebook},
+			{"email",		tune_email}
 		}, {
 			{"auto_ui",		tune_auto_ui},
 			{"auto_video",		tune_auto_video},
@@ -532,6 +562,7 @@ struct mdnie_tuning_info tuning_table[CABC_MAX][MODE_MAX][SCENARIO_MAX] = {
 			{"auto_vt",		tune_auto_vt},
 			{"auto_browser",	tune_auto_browser},
 			{"ebook",		tune_ebook},
+			{"email",		tune_email}
 		},
 	}
 };

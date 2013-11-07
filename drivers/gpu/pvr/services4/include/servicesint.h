@@ -249,6 +249,11 @@ typedef struct _PVRSRV_COMMAND
                                          		allocated on back of this structure, i.e. is resident in Q */
 	PFN_QUEUE_COMMAND_COMPLETE  pfnCommandComplete;	/*!< Command complete callback */
 	IMG_HANDLE					hCallbackData;		/*!< Command complete callback data */
+
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+	IMG_VOID			*pvCleanupFence;	/*!< Sync fence to 'put' after timeline inc() */
+	IMG_VOID			*pvTimeline;		/*!< Android sync timeline to inc() */
+#endif
 }PVRSRV_COMMAND, *PPVRSRV_COMMAND;
 
 
@@ -301,6 +306,11 @@ typedef struct _PVRSRV_QUEUE_INFO_
 	IMG_UINT32			ui32ProcessID;			/*!< Process ID required by resource locking */
 
 	IMG_HANDLE			hMemBlock[2];
+
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+	IMG_UINT32			ui32FenceValue;			/*!< 'Target' timeline value when fence signals */
+	IMG_VOID			*pvTimeline;			/*!< Android struct sync_timeline object */
+#endif
 
 	struct _PVRSRV_QUEUE_INFO_ *psNextKM;		/*!< The next queue in the system */
 }PVRSRV_QUEUE_INFO;

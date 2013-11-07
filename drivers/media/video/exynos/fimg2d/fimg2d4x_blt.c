@@ -40,7 +40,32 @@ static struct sysmmu_prefbuf prefbuf[MAX_PREFBUFS];
 
 #define G2D_MAX_VMA_MAPPING	12
 
-static int vma_lock_mapping_one(struct mm_struct *mm, unsigned long addr, size_t len, void **mappings, int cnt)
+static int mapping_can_locked(unsigned long mapping, unsigned long mappings[], int cnt)
+{
+	int i;
+	if (!mapping)
+		return 0;
+
+	for (i = 0; i < cnt; i++) {
+		if ((mappings[i] & PAGE_MAPPING_FLAGS) == PAGE_MAPPING_ANON) {
+			if ((mapping & PAGE_MAPPING_FLAGS) == PAGE_MAPPING_ANON) {
+				struct anon_vma *anon = (struct anon_vma *)
+					(mapping & ~PAGE_MAPPING_FLAGS);
+				struct anon_vma *locked = (struct anon_vma *)
+					(mappings[i] & ~PAGE_MAPPING_FLAGS);
+				if (anon->root == locked->root)
+					return 0;
+			}
+		} else if (mappings[i] != 0) {
+			if (mappings[i] == mapping)
+				return 0;
+		}
+	}
+	return 1;
+}
+
+static int vma_lock_mapping_one(struct mm_struct *mm, unsigned long addr,
+				size_t len, unsigned long mappings[], int cnt)
 {
 	unsigned long end = addr + len;
 	struct vm_area_struct *vma;
@@ -50,26 +75,31 @@ static int vma_lock_mapping_one(struct mm_struct *mm, unsigned long addr, size_t
 		vma && (vma->vm_start <= addr) && (addr < end);
 		addr += vma->vm_end - vma->vm_start, vma = vma->vm_next) {
 		int i;
+		struct anon_vma *anon;
 
 		page = follow_page(vma, addr, 0);
 		if (IS_ERR_OR_NULL(page) || !page->mapping)
 			continue;
 
-		for (i = 0; i < cnt; i++)
-			if (mappings[i] == page->mapping)
-				break;
-		if (i < cnt) /* already locked */
-			continue;
-
-		if (PageAnon(page)) {
-			page_lock_anon_vma(page);
-			mappings[cnt++] = page->mapping;
-		} else {
-			struct address_space *mapping = page_mapping(page);
-			if (mapping) {
+		anon = page_get_anon_vma(page);
+		if (!anon) {
+			struct address_space *mapping;
+			get_page(page);
+			mapping = page_mapping(page);
+			if (mapping_can_locked(
+				(unsigned long)mapping, mappings, cnt)) {
 				mutex_lock(&mapping->i_mmap_mutex);
-				mappings[cnt++] = mapping;
+				mappings[cnt++] = (unsigned long)mapping;
 			}
+			put_page(page);
+		} else {
+			if (mapping_can_locked(
+					(unsigned long)anon | PAGE_MAPPING_ANON,
+					mappings, cnt)) {
+				page_lock_anon_vma(page);
+				mappings[cnt++] = (unsigned long)page->mapping;
+			}
+			put_anon_vma(anon);
 		}
 
 		if (cnt == G2D_MAX_VMA_MAPPING)
@@ -81,13 +111,13 @@ static int vma_lock_mapping_one(struct mm_struct *mm, unsigned long addr, size_t
 
 static void *vma_lock_mapping(struct mm_struct *mm, struct sysmmu_prefbuf area[], int num_area)
 {
-
-
-	void **mappings = NULL; /* array of G2D_MAX_VMA_MAPPINGS entries */
+	unsigned long *mappings = NULL; /* array of G2D_MAX_VMA_MAPPINGS entries */
 	int cnt = 0;
 	int i;
 
-	mappings = (void **)kzalloc(sizeof(void *) * G2D_MAX_VMA_MAPPING, GFP_KERNEL);
+	mappings = (unsigned long*)kzalloc(
+				sizeof(unsigned long) * G2D_MAX_VMA_MAPPING,
+				GFP_KERNEL);
 	if (!mappings)
 		return NULL;
 
@@ -112,17 +142,19 @@ out:
 static void vma_unlock_mapping(void *__mappings)
 {
 	int i;
-	void **mappings = (void **)__mappings;
+	unsigned long *mappings = __mappings;
 
 	if (!mappings)
 		return;
 
 	for (i = 0; i < G2D_MAX_VMA_MAPPING; i++) {
 		if (mappings[i]) {
-			if ((unsigned long)mappings[i] & PAGE_MAPPING_ANON) {
-				page_unlock_anon_vma((struct anon_vma *)((unsigned long)mappings[i] & ~PAGE_MAPPING_FLAGS));
+			if (mappings[i] & PAGE_MAPPING_ANON) {
+				page_unlock_anon_vma(
+					(struct anon_vma *)(mappings[i] &
+							~PAGE_MAPPING_FLAGS));
 			} else {
-				struct address_space *mapping = mappings[i];
+				struct address_space *mapping = (void *)mappings[i];
 				mutex_unlock(&mapping->i_mmap_mutex);
 			}
 		}

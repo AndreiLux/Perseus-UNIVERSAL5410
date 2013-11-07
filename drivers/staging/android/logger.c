@@ -807,9 +807,11 @@ static int __init logger_init(void)
 	if (unlikely(ret))
 		goto out;
 
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 	ret = init_log(&log_sf);
 	if (unlikely(ret))
 		goto out;
+#endif
 
 	sec_getlog_supply_loggerinfo(_buf_log_main, _buf_log_radio,
 				     _buf_log_events, _buf_log_system);

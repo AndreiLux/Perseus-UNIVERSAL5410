@@ -26,6 +26,8 @@
 #define EDID_SEGMENT(x)		((x) >> 1)
 #define EDID_OFFSET(x)		(((x) & 1) * EDID_BLOCK_SIZE)
 #define EDID_EXTENSION_FLAG	0x7E
+#define EDID_NATIVE_FORMAT	0x83
+#define EDID_BASIC_AUDIO	(1 << 6)
 
 static struct i2c_client *edid_client;
 
@@ -305,6 +307,7 @@ int edid_update(struct hdmi_device *hdev)
 	bool first = true;
 	u8 *edid = NULL;
 	int channels_max = 0;
+	int basic_audio = 0;
 	int ret = 0;
 	int i;
 
@@ -313,10 +316,9 @@ int edid_update(struct hdmi_device *hdev)
 	ret = edid_read(hdev, &edid);
 	if (ret < 0)
 		goto out;
-/* EDID is printed at MHL driver already.
-	print_hex_dump_bytes("EDID: ", DUMP_PREFIX_OFFSET, edid,
-						ret * EDID_BLOCK_SIZE);
-*/
+	else if (ret > 1)
+		basic_audio = edid[EDID_NATIVE_FORMAT] & EDID_BASIC_AUDIO;
+
 	specs.version = 0;
 	specs.revision = 0;
 
@@ -376,8 +378,12 @@ int edid_update(struct hdmi_device *hdev)
 	if (edid_misc & FB_MISC_HDMI) {
 		if (channels_max)
 			max_audio_channels = channels_max;
-		else
-			max_audio_channels = 2;
+		else {
+			if (basic_audio)
+				max_audio_channels = 2;
+			else
+				max_audio_channels = 0;
+		}
 	} else {
 		max_audio_channels = 0;
 	}

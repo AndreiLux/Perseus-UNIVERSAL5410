@@ -33,6 +33,8 @@ extern struct platform_device *gpsPVRLDMDev;
 
 #define SYS_SGX_USSE_COUNT					(1)
 
+#define SYS_SGX_HWRECOVERY_TRACE_RESET_TIME_PERIOD	5000000
+#define SYS_SGX_MAX_HWRECOVERY_OCCURANCE_COUNT		2
 
 #if defined(SGX_FEATURE_HOST_PORT)
 	

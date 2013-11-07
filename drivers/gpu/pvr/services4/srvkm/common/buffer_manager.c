@@ -122,7 +122,7 @@ AllocMemory (BM_CONTEXT			*pBMContext,
 	RA_ARENA			*pArena = IMG_NULL;
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			  "AllocMemory (uSize=0x%x, ui32Flags=0x%x, align=0x%x)",
+			  "AllocMemory (uSize=0x%" SIZE_T_FMT_LEN "x, ui32Flags=0x%x, align=0x%x)",
 			  uSize, ui32Flags, uDevVAddrAlignment));
 
 	/*
@@ -228,7 +228,7 @@ AllocMemory (BM_CONTEXT			*pBMContext,
 						  ui32PrivDataLength,
 						  (IMG_UINTPTR_T *)&(pBuf->DevVAddr.uiAddr)))
 			{
-				PVR_DPF((PVR_DBG_ERROR, "AllocMemory: RA_Alloc(0x%x) FAILED", uSize));
+				PVR_DPF((PVR_DBG_ERROR, "AllocMemory: RA_Alloc(0x%" SIZE_T_FMT_LEN "x) FAILED", uSize));
 				return IMG_FALSE;
 			}
 		}
@@ -322,7 +322,7 @@ AllocMemory (BM_CONTEXT			*pBMContext,
 							(IMG_PVOID *)&pMapping, IMG_NULL,
 							"Buffer Manager Mapping") != PVRSRV_OK)
 		{
-			PVR_DPF((PVR_DBG_ERROR, "AllocMemory: OSAllocMem(0x%x) FAILED", sizeof(*pMapping)));
+			PVR_DPF((PVR_DBG_ERROR, "AllocMemory: OSAllocMem(0x%" SIZE_T_FMT_LEN "x) FAILED", sizeof(*pMapping)));
 			return IMG_FALSE;
 		}
 
@@ -349,7 +349,7 @@ AllocMemory (BM_CONTEXT			*pBMContext,
 
 	/* output some stats */
 	PVR_DPF ((PVR_DBG_MESSAGE,
-				"AllocMemory: pMapping=%p: DevV=%08X CpuV=%p CpuP=" CPUPADDR_FMT " uSize=0x%x",
+				"AllocMemory: pMapping=%p: DevV=%08X CpuV=%p CpuP=" CPUPADDR_FMT " uSize=0x%" SIZE_T_FMT_LEN "x",
 				pMapping,
 				pMapping->DevVAddr.uiAddr,
 				pMapping->CpuVAddr,
@@ -357,7 +357,7 @@ AllocMemory (BM_CONTEXT			*pBMContext,
 				pMapping->uSize));
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-				"AllocMemory: pBuf=%p: DevV=%08X CpuV=%p CpuP=" CPUPADDR_FMT " uSize=0x%x",
+				"AllocMemory: pBuf=%p: DevV=%08X CpuV=%p CpuP=" CPUPADDR_FMT " uSize=0x%" SIZE_T_FMT_LEN "x",
 				pBuf,
 				pBuf->DevVAddr.uiAddr,
 				pBuf->CpuVAddr,
@@ -410,8 +410,8 @@ WrapMemory (BM_HEAP *psBMHeap,
 	IMG_UINT32 ui32Attribs = ui32Flags & ~(PVRSRV_MEM_READ | PVRSRV_MEM_WRITE);
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			  "WrapMemory(psBMHeap=%p, size=0x%x, offset=0x%x\
-			  , bPhysContig=0x%x, sysPAddr=0x%x, pvCPUVAddr = 0x%p, flags=0x%x)",
+			  "WrapMemory(psBMHeap=%p, size=0x%" SIZE_T_FMT_LEN "x, offset=0x%" SIZE_T_FMT_LEN 
+			  "x, bPhysContig=0x%x, sysPAddr=0x" SYSPADDR_FMT ", pvCPUVAddr = 0x%p, flags=0x%x)",
 			  psBMHeap, 
               uSize, 
               uiBaseOffset, 
@@ -433,7 +433,7 @@ WrapMemory (BM_HEAP *psBMHeap,
 						(IMG_PVOID *)&pMapping, IMG_NULL,
 						"Mocked-up mapping") != PVRSRV_OK)
 	{
-		PVR_DPF((PVR_DBG_ERROR, "WrapMemory: OSAllocMem(0x%x) FAILED", sizeof(*pMapping)));
+		PVR_DPF((PVR_DBG_ERROR, "WrapMemory: OSAllocMem(0x%" SIZE_T_FMT_LEN "x) FAILED", sizeof(*pMapping)));
 		return IMG_FALSE;
 	}
 
@@ -458,7 +458,7 @@ WrapMemory (BM_HEAP *psBMHeap,
 							ui32Attribs,
 							&pMapping->hOSMemHandle) != PVRSRV_OK)
 			{
-				PVR_DPF((PVR_DBG_ERROR,	"WrapMemory: OSRegisterMem Phys=0x" CPUPADDR_FMT ", Size=%u) failed",
+				PVR_DPF((PVR_DBG_ERROR,	"WrapMemory: OSRegisterMem Phys=0x" CPUPADDR_FMT ", Size=%" SIZE_T_FMT_LEN "u) failed",
 					pMapping->CpuPAddr.uiAddr, pMapping->uSize));
 				goto fail_cleanup;
 			}
@@ -474,7 +474,7 @@ WrapMemory (BM_HEAP *psBMHeap,
 							ui32Attribs,
 							&pMapping->hOSMemHandle) != PVRSRV_OK)
 			{
-				PVR_DPF((PVR_DBG_ERROR,	"WrapMemory: OSRegisterDiscontigMem Size=0x%u) failed",
+				PVR_DPF((PVR_DBG_ERROR,	"WrapMemory: OSRegisterDiscontigMem Size=0x%" SIZE_T_FMT_LEN "u) failed",
 					pMapping->uSize));
 				goto fail_cleanup;
 			}
@@ -529,7 +529,7 @@ WrapMemory (BM_HEAP *psBMHeap,
 	if (!bResult)
 	{
 		PVR_DPF((PVR_DBG_ERROR,
-				"WrapMemory: DevMemoryAlloc(0x%x) failed",
+				"WrapMemory: DevMemoryAlloc(0x%" SIZE_T_FMT_LEN "x) failed",
 				pMapping->uSize));
 		goto fail_cleanup;
 	}
@@ -573,10 +573,10 @@ WrapMemory (BM_HEAP *psBMHeap,
 
 	PVR_DPF ((PVR_DBG_MESSAGE, "DevVaddr.uiAddr=%08X", DevVAddr.uiAddr));
 	PVR_DPF ((PVR_DBG_MESSAGE,
-				"WrapMemory: DevV=%08X CpuP=" CPUPADDR_FMT " uSize=0x%x",
+				"WrapMemory: DevV=%08X CpuP=" CPUPADDR_FMT " uSize=0x%" SIZE_T_FMT_LEN "x",
 				pMapping->DevVAddr.uiAddr, pMapping->CpuPAddr.uiAddr, pMapping->uSize));
 	PVR_DPF ((PVR_DBG_MESSAGE,
-				"WrapMemory: DevV=%08X CpuP=" CPUPADDR_FMT " uSize=0x%x",
+				"WrapMemory: DevV=%08X CpuP=" CPUPADDR_FMT " uSize=0x%" SIZE_T_FMT_LEN "x",
 				pBuf->DevVAddr.uiAddr, pBuf->CpuPAddr.uiAddr, uSize));
 
 	pBuf->pMapping = pMapping;
@@ -1554,7 +1554,7 @@ BM_Alloc (  IMG_HANDLE			hDevMemHeap,
 	ui32Flags = *pui32Flags;
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-		  "BM_Alloc (uSize=0x%x, ui32Flags=0x%x, uDevVAddrAlignment=0x%x)",
+		  "BM_Alloc (uSize=0x%" SIZE_T_FMT_LEN "x, ui32Flags=0x%x, uDevVAddrAlignment=0x%x)",
 			uSize, ui32Flags, uDevVAddrAlignment));
 
 	SysAcquireData(&psSysData);
@@ -1604,7 +1604,7 @@ BM_Alloc (  IMG_HANDLE			hDevMemHeap,
 	}
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-		  "BM_Alloc (uSize=0x%x, ui32Flags=0x%x)",
+		  "BM_Alloc (uSize=0x%" SIZE_T_FMT_LEN "x, ui32Flags=0x%x)",
 		  uSize, ui32Flags));
 
 	/*
@@ -1770,8 +1770,8 @@ BM_Wrap (	IMG_HANDLE hDevMemHeap,
 	}
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-		  "BM_Wrap (uSize=0x%x, uOffset=0x%x \
-		  , bPhysContig=0x%x, syspAddr=0x%x, pvCPUVAddr=0x%p, ui32Flags=0x%x)",
+		  "BM_Wrap (uSize=0x%" SIZE_T_FMT_LEN "x, uOffset=0x%" SIZE_T_FMT_LEN 
+		  "x, bPhysContig=0x%x, syspAddr=0x" SYSPADDR_FMT ", pvCPUVAddr=0x%p, ui32Flags=0x%x)",
 			uSize, 
             uOffset, 
             bPhysContig, 
@@ -1822,7 +1822,7 @@ BM_Wrap (	IMG_HANDLE hDevMemHeap,
 														pBuf->pMapping->eCpuMemoryOrigin == hm_wrapped_virtaddr))
 		{
 			PVR_DPF((PVR_DBG_MESSAGE,
-					"BM_Wrap (Matched previous Wrap! uSize=0x%x, uOffset=0x%x, SysAddr=" SYSPADDR_FMT ")",
+					"BM_Wrap (Matched previous Wrap! uSize=0x%" SIZE_T_FMT_LEN "x, uOffset=0x%" SIZE_T_FMT_LEN "x, SysAddr=" SYSPADDR_FMT ")",
 					uSize, 
                     uOffset, 
                     sHashAddress.uiAddr));
@@ -1883,7 +1883,7 @@ BM_Wrap (	IMG_HANDLE hDevMemHeap,
 	}
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			"BM_Wrap (uSize=0x%x, ui32Flags=0x%x, devVAddr=%08X)",
+			"BM_Wrap (uSize=0x%" SIZE_T_FMT_LEN "x, ui32Flags=0x%x, devVAddr=%08X)",
 			uSize, ui32Flags, pBuf->DevVAddr.uiAddr));
 
 	/*
@@ -2073,7 +2073,7 @@ BM_HandleToSysPaddr (BM_HANDLE hBuf)
 		return PhysAddr;
 	}
 
-	PVR_DPF ((PVR_DBG_MESSAGE, "BM_HandleToSysPaddr(h=0x%p)=" CPUPADDR_FMT, hBuf, pBuf->CpuPAddr.uiAddr));
+	PVR_DPF ((PVR_DBG_MESSAGE, "BM_HandleToSysPaddr(h=0lx%p)=" CPUPADDR_FMT, hBuf, pBuf->CpuPAddr.uiAddr));
 	return SysCpuPAddrToSysPAddr (pBuf->CpuPAddr);
 }
 
@@ -2717,7 +2717,8 @@ BM_ImportMemory (IMG_VOID *pH,
 	IMG_SIZE_T uDevVAddrAlignment = 0; /* ? */
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			  "BM_ImportMemory (pBMContext=0x%p, uRequestSize=0x%x, ui32Flags=0x%x, uAlign=0x%x)",
+			  "BM_ImportMemory (pBMContext=0x%p, uRequestSize=0x%" SIZE_T_FMT_LEN 
+			  "x, ui32Flags=0x%x, uAlign=0x%" SIZE_T_FMT_LEN "x)",
 			  pBMContext, uRequestSize, ui32Flags, uDevVAddrAlignment));
 
 	PVR_ASSERT (ppsMapping != IMG_NULL);
@@ -2817,7 +2818,7 @@ BM_ImportMemory (IMG_VOID *pH,
                                           &pMapping->hOSMemHandle) != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR,
-					"BM_ImportMemory: XProcWorkaroundAllocShareable(0x%x) failed",
+					"BM_ImportMemory: XProcWorkaroundAllocShareable(0x%" SIZE_T_FMT_LEN "x) failed",
 					uPSize));
 			goto fail_mapping_alloc;
 		}
@@ -2861,7 +2862,7 @@ BM_ImportMemory (IMG_VOID *pH,
                                               &pMapping->hOSMemHandle) != PVRSRV_OK)
             {
                 PVR_DPF((PVR_DBG_ERROR,
-                         "BM_ImportMemory: XProcWorkaroundAllocShareable(0x%x) failed",
+                         "BM_ImportMemory: XProcWorkaroundAllocShareable(0x%" SIZE_T_FMT_LEN "x) failed",
                          uPSize));
                 goto fail_mapping_alloc;
             }
@@ -2921,7 +2922,7 @@ BM_ImportMemory (IMG_VOID *pH,
 						 &pMapping->hOSMemHandle) != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR,
-					"BM_ImportMemory: OSAllocPages(0x%x) failed",
+					"BM_ImportMemory: OSAllocPages(0x%" SIZE_T_FMT_LEN "x) failed",
 					uPSize));
 			goto fail_mapping_alloc;
 		}
@@ -2963,7 +2964,7 @@ BM_ImportMemory (IMG_VOID *pH,
 					   ui32PrivDataLength,
 					   (IMG_UINTPTR_T *)&sSysPAddr.uiAddr))
 		{
-			PVR_DPF((PVR_DBG_ERROR, "BM_ImportMemory: RA_Alloc(0x%x) FAILED", uPSize));
+			PVR_DPF((PVR_DBG_ERROR, "BM_ImportMemory: RA_Alloc(0x%" SIZE_T_FMT_LEN "x) FAILED", uPSize));
 			goto fail_mapping_alloc;
 		}
 
@@ -3003,7 +3004,7 @@ BM_ImportMemory (IMG_VOID *pH,
 		if (!bResult)
 		{
 			PVR_DPF((PVR_DBG_ERROR,
-					"BM_ImportMemory: DevMemoryAlloc(0x%x) failed",
+					"BM_ImportMemory: DevMemoryAlloc(0x%" SIZE_T_FMT_LEN "x) failed",
 					pMapping->uSize));
 			goto fail_dev_mem_alloc;
 		}

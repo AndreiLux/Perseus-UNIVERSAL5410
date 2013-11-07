@@ -481,15 +481,14 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
                                       IMG_HANDLE *phSwapChain,
                                       IMG_UINT32 *pui32SwapChainID)
 {
-	OMAPLFB_DEVINFO	*psDevInfo;
 	OMAPLFB_SWAPCHAIN *psSwapChain;
-	OMAPLFB_BUFFER *psBuffer;
-	IMG_UINT32 i;
+	OMAPLFB_DEVINFO	*psDevInfo;
 	PVRSRV_ERROR eError;
-	IMG_UINT32 ui32BuffersToSkip;
+	IMG_UINT32 i;
 
 	UNREFERENCED_PARAMETER(ui32OEMFlags);
-	
+	UNREFERENCED_PARAMETER(ui32Flags);
+
 	/* Check parameters */
 	if(!hDevice
 	|| !psDstSurfAttrib
@@ -516,60 +515,7 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 		eError = PVRSRV_ERROR_FLIP_CHAIN_EXISTS;
 		goto ExitUnLock;
 	}
-	
-	/* Check the buffer count */
-	if(ui32BufferCount > psDevInfo->sDisplayInfo.ui32MaxSwapChainBuffers)
-	{
-		eError = PVRSRV_ERROR_TOOMANYBUFFERS;
-		goto ExitUnLock;
-	}
-	
-	if ((psDevInfo->sFBInfo.ulRoundedBufferSize * (unsigned long)ui32BufferCount) > psDevInfo->sFBInfo.ulFBSize)
-	{
-		eError = PVRSRV_ERROR_TOOMANYBUFFERS;
-		goto ExitUnLock;
-	}
 
-	/*
-	 * We will allocate the swap chain buffers at the back of the frame
-	 * buffer area.  This preserves the front portion, which may be being
-	 * used by other Linux Framebuffer based applications.
-	 */
-	ui32BuffersToSkip = psDevInfo->sDisplayInfo.ui32MaxSwapChainBuffers - ui32BufferCount;
-
-	/* 
-	 *	Verify the DST/SRC attributes,
-	 *	SRC/DST must match the current display mode config
-	*/
-	if(psDstSurfAttrib->pixelformat != psDevInfo->sDisplayFormat.pixelformat
-	|| psDstSurfAttrib->sDims.ui32ByteStride != psDevInfo->sDisplayDim.ui32ByteStride
-	|| psDstSurfAttrib->sDims.ui32Width != psDevInfo->sDisplayDim.ui32Width
-	|| psDstSurfAttrib->sDims.ui32Height != psDevInfo->sDisplayDim.ui32Height)
-	{
-		/* DST doesn't match the current mode */
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto ExitUnLock;
-	}		
-
-	if(psDstSurfAttrib->pixelformat != psSrcSurfAttrib->pixelformat
-	|| psDstSurfAttrib->sDims.ui32ByteStride != psSrcSurfAttrib->sDims.ui32ByteStride
-	|| psDstSurfAttrib->sDims.ui32Width != psSrcSurfAttrib->sDims.ui32Width
-	|| psDstSurfAttrib->sDims.ui32Height != psSrcSurfAttrib->sDims.ui32Height)
-	{
-		/* DST doesn't match the SRC */
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto ExitUnLock;
-	}		
-
-	/* check flags if implementation requires them */
-	UNREFERENCED_PARAMETER(ui32Flags);
-	
-#if defined(PVR_OMAPFB3_UPDATE_MODE)
-	if (!OMAPLFBSetUpdateMode(psDevInfo, PVR_OMAPFB3_UPDATE_MODE))
-	{
-		printk(KERN_WARNING DRIVER_PREFIX ": %s: Device %u: Couldn't set frame buffer update mode %d\n", __FUNCTION__, psDevInfo->uiFBDevID, PVR_OMAPFB3_UPDATE_MODE);
-	}
-#endif
 	/* create a swapchain structure */
 	psSwapChain = (OMAPLFB_SWAPCHAIN*)OMAPLFBAllocKernelMem(sizeof(OMAPLFB_SWAPCHAIN));
 	if(!psSwapChain)
@@ -578,56 +524,121 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 		goto ExitUnLock;
 	}
 
-	psBuffer = (OMAPLFB_BUFFER*)OMAPLFBAllocKernelMem(sizeof(OMAPLFB_BUFFER) * ui32BufferCount);
-	if(!psBuffer)
+	/* If services asks for a 0-length swap chain, it's probably Android.
+	 *
+	 * This will use only non-display memory posting via PVRSRVSwapToDCBuffers2(),
+	 * and we can skip some useless sanity checking.
+	 */
+	if(ui32BufferCount > 0)
 	{
-		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-		goto ErrorFreeSwapChain;
+		IMG_UINT32 ui32BuffersToSkip;
+
+		/* Check the buffer count */
+		if(ui32BufferCount > psDevInfo->sDisplayInfo.ui32MaxSwapChainBuffers)
+		{
+			eError = PVRSRV_ERROR_TOOMANYBUFFERS;
+			goto ErrorFreeSwapChain;
+		}
+	
+		if ((psDevInfo->sFBInfo.ulRoundedBufferSize * (unsigned long)ui32BufferCount) > psDevInfo->sFBInfo.ulFBSize)
+		{
+			eError = PVRSRV_ERROR_TOOMANYBUFFERS;
+			goto ErrorFreeSwapChain;
+		}
+
+		/*
+		 * We will allocate the swap chain buffers at the back of the frame
+		 * buffer area.  This preserves the front portion, which may be being
+		 * used by other Linux Framebuffer based applications.
+		 */
+		ui32BuffersToSkip = psDevInfo->sDisplayInfo.ui32MaxSwapChainBuffers - ui32BufferCount;
+
+		/* 
+		 *	Verify the DST/SRC attributes,
+		 *	SRC/DST must match the current display mode config
+		 */
+		if(psDstSurfAttrib->pixelformat != psDevInfo->sDisplayFormat.pixelformat
+		|| psDstSurfAttrib->sDims.ui32ByteStride != psDevInfo->sDisplayDim.ui32ByteStride
+		|| psDstSurfAttrib->sDims.ui32Width != psDevInfo->sDisplayDim.ui32Width
+		|| psDstSurfAttrib->sDims.ui32Height != psDevInfo->sDisplayDim.ui32Height)
+		{
+			/* DST doesn't match the current mode */
+			eError = PVRSRV_ERROR_INVALID_PARAMS;
+			goto ErrorFreeSwapChain;
+		}
+
+		if(psDstSurfAttrib->pixelformat != psSrcSurfAttrib->pixelformat
+		|| psDstSurfAttrib->sDims.ui32ByteStride != psSrcSurfAttrib->sDims.ui32ByteStride
+		|| psDstSurfAttrib->sDims.ui32Width != psSrcSurfAttrib->sDims.ui32Width
+		|| psDstSurfAttrib->sDims.ui32Height != psSrcSurfAttrib->sDims.ui32Height)
+		{
+			/* DST doesn't match the SRC */
+			eError = PVRSRV_ERROR_INVALID_PARAMS;
+			goto ErrorFreeSwapChain;
+		}
+
+		psSwapChain->psBuffer = (OMAPLFB_BUFFER*)OMAPLFBAllocKernelMem(sizeof(OMAPLFB_BUFFER) * ui32BufferCount);
+		if(!psSwapChain->psBuffer)
+		{
+			eError = PVRSRV_ERROR_OUT_OF_MEMORY;
+			goto ErrorFreeSwapChain;
+		}
+
+		/* Link the buffers */
+		for(i = 0; i < ui32BufferCount - 1; i++)
+		{
+			psSwapChain->psBuffer[i].psNext = &psSwapChain->psBuffer[i + 1];
+		}
+
+		/* and link last to first */
+		psSwapChain->psBuffer[i].psNext = &psSwapChain->psBuffer[0];
+
+		/* Configure the swapchain buffers */
+		for(i = 0; i < ui32BufferCount; i++)
+		{
+			IMG_UINT32 ui32SwapBuffer = i + ui32BuffersToSkip;
+			IMG_UINT32 ui32BufferOffset = ui32SwapBuffer * (IMG_UINT32)psDevInfo->sFBInfo.ulRoundedBufferSize;
+
+#if defined(CONFIG_DSSCOMP)
+			if (psDevInfo->sFBInfo.bIs2D)
+			{
+				ui32BufferOffset = 0;
+			}
+#endif /* defined(CONFIG_DSSCOMP) */
+
+			psSwapChain->psBuffer[i].psSyncData = ppsSyncData[i];
+
+			psSwapChain->psBuffer[i].sSysAddr.uiAddr = psDevInfo->sFBInfo.sSysAddr.uiAddr + ui32BufferOffset;
+			psSwapChain->psBuffer[i].sCPUVAddr = psDevInfo->sFBInfo.sCPUVAddr + ui32BufferOffset;
+			psSwapChain->psBuffer[i].ulYOffset = ui32BufferOffset / psDevInfo->sFBInfo.ulByteStride;
+			psSwapChain->psBuffer[i].psDevInfo = psDevInfo;
+
+#if defined(CONFIG_DSSCOMP)
+			if (psDevInfo->sFBInfo.bIs2D)
+			{
+				psSwapChain->psBuffer[i].sSysAddr.uiAddr += ui32SwapBuffer *
+					ALIGN((IMG_UINT32)psDevInfo->sFBInfo.ulWidth * psDevInfo->sFBInfo.uiBytesPerPixel, PAGE_SIZE);
+			}
+#endif /* defined(CONFIG_DSSCOMP) */
+
+			OMAPLFBInitBufferForSwap(&psSwapChain->psBuffer[i]);
+		}
 	}
+	else
+	{
+		psSwapChain->psBuffer = NULL;
+	}
+
+#if defined(PVR_OMAPFB3_UPDATE_MODE)
+	if (!OMAPLFBSetUpdateMode(psDevInfo, PVR_OMAPFB3_UPDATE_MODE))
+	{
+		printk(KERN_WARNING DRIVER_PREFIX ": %s: Device %u: Couldn't set frame buffer update mode %d\n", __FUNCTION__, psDevInfo->uiFBDevID, PVR_OMAPFB3_UPDATE_MODE);
+	}
+#endif /* defined(PVR_OMAPFB3_UPDATE_MODE) */
 
 	psSwapChain->ulBufferCount = (unsigned long)ui32BufferCount;
-	psSwapChain->psBuffer = psBuffer;
 	psSwapChain->bNotVSynced = OMAPLFB_TRUE;
 	psSwapChain->uiFBDevID = psDevInfo->uiFBDevID;
-
-	/* Link the buffers */
-	for(i=0; i<ui32BufferCount-1; i++)
-	{
-		psBuffer[i].psNext = &psBuffer[i+1];
-	}
-	/* and link last to first */
-	psBuffer[i].psNext = &psBuffer[0];
-
-	/* Configure the swapchain buffers */
-	for(i=0; i<ui32BufferCount; i++)
-	{
-		IMG_UINT32 ui32SwapBuffer = i + ui32BuffersToSkip;
-		IMG_UINT32 ui32BufferOffset = ui32SwapBuffer * (IMG_UINT32)psDevInfo->sFBInfo.ulRoundedBufferSize;
-
-#if defined(CONFIG_DSSCOMP)
-		if (psDevInfo->sFBInfo.bIs2D)
-		{
-			ui32BufferOffset = 0;
-		}
-#endif /* defined(CONFIG_DSSCOMP) */
-
-		psBuffer[i].psSyncData = ppsSyncData[i];
-
-		psBuffer[i].sSysAddr.uiAddr = psDevInfo->sFBInfo.sSysAddr.uiAddr + ui32BufferOffset;
-		psBuffer[i].sCPUVAddr = psDevInfo->sFBInfo.sCPUVAddr + ui32BufferOffset;
-		psBuffer[i].ulYOffset = ui32BufferOffset / psDevInfo->sFBInfo.ulByteStride;
-		psBuffer[i].psDevInfo = psDevInfo;
-
-#if defined(CONFIG_DSSCOMP)
-		if (psDevInfo->sFBInfo.bIs2D)
-		{
-			psBuffer[i].sSysAddr.uiAddr += ui32SwapBuffer *
-				ALIGN((IMG_UINT32)psDevInfo->sFBInfo.ulWidth * psDevInfo->sFBInfo.uiBytesPerPixel, PAGE_SIZE);
-		}
-#endif /* defined(CONFIG_DSSCOMP) */
-
-		OMAPLFBInitBufferForSwap(&psBuffer[i]);
-	}
 
 	if (OMAPLFBCreateSwapQueue(psSwapChain) != OMAPLFB_OK)
 	{ 
@@ -663,7 +674,10 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 ErrorDestroySwapQueue:
 	OMAPLFBDestroySwapQueue(psSwapChain);
 ErrorFreeBuffers:
-	OMAPLFBFreeKernelMem(psBuffer);
+	if(psSwapChain->psBuffer)
+	{
+		OMAPLFBFreeKernelMem(psSwapChain->psBuffer);
+	}
 ErrorFreeSwapChain:
 	OMAPLFBFreeKernelMem(psSwapChain);
 ExitUnLock:
@@ -712,7 +726,10 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	}
 
 	/* Free resources */
-	OMAPLFBFreeKernelMem(psSwapChain->psBuffer);
+	if (psSwapChain->psBuffer)
+	{
+		OMAPLFBFreeKernelMem(psSwapChain->psBuffer);
+	}
 	OMAPLFBFreeKernelMem(psSwapChain);
 
 	psDevInfo->psSwapChain = NULL;

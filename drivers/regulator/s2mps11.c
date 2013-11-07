@@ -729,10 +729,8 @@ static __devinit int s2mps11_pmic_probe(struct platform_device *pdev)
 
 	size = sizeof(struct regulator_dev *) * pdata->num_regulators;
 	s2mps11->rdev = devm_kzalloc(&pdev->dev, size, GFP_KERNEL);
-	if (!s2mps11->rdev) {
-		devm_kfree(&pdev->dev, s2mps11);
+	if (!s2mps11->rdev)
 		return -ENOMEM;
-	}
 
 	rdev = s2mps11->rdev;
 	s2mps11->dev = &pdev->dev;

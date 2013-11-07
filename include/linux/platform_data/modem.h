@@ -324,6 +324,9 @@ struct modem_data {
 	bool sim_polarity;
 	int max_link_channel;
 	int max_acm_channel; /* will be remove... */
+
+	/* Optional CP force crash */
+	int (*cp_force_crash)(void *);
 };
 
 #define LOG_TAG "mif: "

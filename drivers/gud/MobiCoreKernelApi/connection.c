@@ -66,7 +66,8 @@ size_t connection_read_data_msg(struct connection *conn, void *buffer,
 				uint32_t len)
 {
 	size_t ret = -1;
-	MCDRV_DBG_VERBOSE("reading connection data %u, connection data left %u",
+	MCDRV_DBG_VERBOSE(mc_kapi,
+			  "reading connection data %u, connection data left %u",
 			  len, conn->data_len);
 	/* trying to read more than the left data */
 	if (len > conn->data_len) {
@@ -85,14 +86,20 @@ size_t connection_read_data_msg(struct connection *conn, void *buffer,
 		kfree_skb(conn->skb);
 		conn->skb = NULL;
 	}
-	MCDRV_DBG_VERBOSE("read %u",  ret);
+	MCDRV_DBG_VERBOSE(mc_kapi, "read %u",  ret);
 	return ret;
 }
 
 size_t connection_read_datablock(struct connection *conn, void *buffer,
 				 uint32_t len)
 {
-	return connection_read_data(conn, buffer, len, -1);
+/*##################################
+#mobicore_security_team_add
+##################################*/
+	return connection_read_data(conn, buffer, len, 1000);
+	/* default timeout is -1, which may cause infinite waiting,
+	so that phone cannot boot. */	
+/*##################################*/
 }
 
 size_t connection_read_data(struct connection *conn, void *buffer, uint32_t len,
@@ -103,7 +110,7 @@ size_t connection_read_data(struct connection *conn, void *buffer, uint32_t len,
 	MCDRV_ASSERT(buffer != NULL);
 	MCDRV_ASSERT(conn->socket_descriptor != NULL);
 
-	MCDRV_DBG_VERBOSE("read data len = %u for PID = %u",
+	MCDRV_DBG_VERBOSE(mc_kapi, "read data len = %u for PID = %u",
 			  len, conn->sequence_magic);
 	do {
 		/*
@@ -112,16 +119,22 @@ size_t connection_read_data(struct connection *conn, void *buffer, uint32_t len,
 		 */
 		if (down_timeout(&(conn->data_available_sem),
 				 msecs_to_jiffies(timeout))) {
-			MCDRV_DBG_VERBOSE("Timeout reading the data sem");
+			MCDRV_DBG_VERBOSE(mc_kapi,
+					  "Timeout reading the data sem");
 			ret = -2;
 			break;
 		}
-
-		if (mutex_lock_interruptible(&(conn->data_lock))) {
-			MCDRV_DBG_ERROR("interrupted reading the data sem");
+     /*##################################
+     #mobicore_security_team_add
+     ##################################*/
+		/*if (mutex_lock_interruptible(&(conn->data_lock))) {
+			MCDRV_DBG_ERROR(mc_kapi,
+					"interrupted reading the data sem");
 			ret = -1;
 			break;
-		}
+		}*/
+     mutex_lock(&(conn->data_lock));
+     /*##################################*/
 
 		/* Have data, use it */
 		if (conn->data_len > 0)
@@ -145,7 +158,7 @@ size_t connection_write_data(struct connection *conn, void *buffer,
 	struct nlmsghdr *nlh;
 	int ret = 0;
 
-	MCDRV_DBG_VERBOSE("buffer length %u from pid %u\n",
+	MCDRV_DBG_VERBOSE(mc_kapi, "buffer length %u from pid %u\n",
 			  len,  conn->sequence_magic);
 	do {
 		skb = nlmsg_new(NLMSG_SPACE(len), GFP_KERNEL);
@@ -177,15 +190,20 @@ int connection_process(struct connection *conn, struct sk_buff *skb)
 {
 	int ret = 0;
 	do {
-		if (mutex_lock_interruptible(&(conn->data_lock))) {
-			MCDRV_DBG_ERROR("Interrupted getting data semaphore!");
+		/*##################################
+		#mobicore_security_team_add
+		##################################*/
+		/*if (mutex_lock_interruptible(&(conn->data_lock))) {
+			MCDRV_DBG_ERROR(mc_kapi,
+					"Interrupted getting data semaphore!");
 			ret = -1;
 			break;
-		}
-
+		}*/
+		mutex_lock(&(conn->data_lock));
+		/*##################################*/
 		kfree_skb(conn->skb);
 
-		/* Get a reference to the incomming skb */
+		/* Get a reference to the incoming skb */
 		conn->skb = skb_get(skb);
 		if (conn->skb) {
 			conn->data_msg = nlmsg_hdr(conn->skb);

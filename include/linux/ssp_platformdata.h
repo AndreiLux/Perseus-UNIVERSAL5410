@@ -42,5 +42,8 @@ struct ssp_platform_data {
 	u8 cp_thm_adc_channel;
 	u8 cp_thm_adc_arr_size;
 	struct cp_thm_adc_table *cp_thm_adc_table;
+	int mcu_int1;
+	int mcu_int2;
+	int ap_int;
 };
 #endif

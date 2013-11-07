@@ -117,8 +117,14 @@ extern "C" {
 #define SGX_MAX_SRC_SYNCS_TA				32
 #define SGX_MAX_DST_SYNCS_TA				1
 /* note: there is implicitly 1 3D Dst Sync */
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
+/* note: only one dst sync is supported by the 2D paths */
+#define SGX_MAX_SRC_SYNCS_TQ				6
+#define SGX_MAX_DST_SYNCS_TQ				2
+#else /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 #define SGX_MAX_SRC_SYNCS_TQ				8
 #define SGX_MAX_DST_SYNCS_TQ				1
+#endif /* defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
 #endif
 
 

@@ -47,6 +47,10 @@
 #define TK_MODULE_20055		55
 #define TK_MODULE_20065		65
 
+#ifdef CONFIG_SEC_TSP_FACTORY
+#define TKEY_FW_FORCEUPDATE
+#endif
+
 /* Flip cover*/
 #define TKEY_FLIP_MODE
 

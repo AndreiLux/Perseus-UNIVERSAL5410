@@ -136,6 +136,11 @@ static int sec_pmic_probe(struct i2c_client *i2c,
 	struct sec_pmic_dev *sec_pmic;
 	int ret = 0;
 
+	if (!pdata) {
+		dev_err(&i2c->dev, "No platform data found\n");
+		return -EIO;
+	}
+
 	sec_pmic = devm_kzalloc(&i2c->dev, sizeof(struct sec_pmic_dev),
 				GFP_KERNEL);
 	if (sec_pmic == NULL)

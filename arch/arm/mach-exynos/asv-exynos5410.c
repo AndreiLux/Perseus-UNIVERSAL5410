@@ -25,6 +25,11 @@
 
 #include <plat/cpu.h>
 
+#ifdef CONFIG_SEC_PM
+#include <linux/stat.h>
+#include <mach/exynos-interface.h>
+#endif
+
 #define CHIP_ID3_REG		(S5P_VA_CHIPID + 0x04)
 #define EXYNOS5410_IDS_OFFSET	(24)
 #define EXYNOS5410_IDS_MASK	(0xFF)
@@ -711,11 +716,93 @@ out:
 				(is_special_lot ? "Special" : "Non Special"));
 }
 
+#ifdef CONFIG_SEC_PM
+static ssize_t show_asv_group_info(struct kobject *kobj,
+			     struct attribute *attr, char *buf)
+{
+	unsigned int i;
+	int ids_value = 0, hpm_value = 0;
+	int asv_group = 0, ids_group = 0, hpm_group = 0;
+	unsigned int chip_id3_value;
+	unsigned int chip_id4_value;
+	char *asv_grade;
+	struct clk *clk_chipid;
+	int count = 0;
+
+	clk_chipid = clk_get(NULL, "chipid_apbif");
+	if (IS_ERR(clk_chipid)) {
+		pr_info("EXYNOS5410 ASV : cannot find chipid clock!\n");
+		return -EINVAL;
+	}
+
+	clk_enable(clk_chipid);
+
+	chip_id3_value = __raw_readl(CHIP_ID3_REG);
+	chip_id4_value = __raw_readl(CHIP_ID4_REG);
+	ids_value = (chip_id3_value >> EXYNOS5410_IDS_OFFSET) & EXYNOS5410_IDS_MASK;
+	hpm_value = (chip_id4_value >> EXYNOS5410_TMCB_OFFSET) & EXYNOS5410_TMCB_MASK;
+
+	clk_disable(clk_chipid);
+
+	for (i = 0; i < ASV_GRP_NR(ARM); i++) {
+		if (refer_use_table_get_asv[0][i] &&
+				ids_value <= refer_table_get_asv[0][i]) {
+			ids_group = i;
+			break;
+		}
+	}
+
+	for (i = 0; i < ASV_GRP_NR(ARM); i++) {
+		if (refer_use_table_get_asv[1][i] &&
+				hpm_value <= refer_table_get_asv[1][i]) {
+			hpm_group = i;
+			break;
+		}
+	}
+
+	if (is_speedgroup)
+		asv_group = special_lot_group;
+	else
+		asv_group = min(ids_group, hpm_group);
+
+	asv_grade = "B";
+	if (asv_group >= 2 && asv_group <= 9)
+		if ((hpm_group - ids_group) >= 0)
+			asv_grade = "A";
+
+	if ((ids_value > 100) || (ids_value <= 9))
+		asv_grade = "C";
+
+	pr_info("ASV %d / IDS %d , %d / TMCB %d, %d / TMCB-IDS skew %d / Group %s\n",
+			asv_group, ids_value, ids_group, hpm_value, hpm_group,
+			hpm_group - ids_group, asv_grade);
+
+	/* Set asv group info to buf */
+	count += sprintf(&buf[count], "%d ", asv_group);
+	count += sprintf(&buf[count], "%d ", ids_value);
+	count += sprintf(&buf[count], "%d ", ids_group);
+	count += sprintf(&buf[count], "%d ", hpm_value);
+	count += sprintf(&buf[count], "%d ", hpm_group);
+	count += sprintf(&buf[count], "%d ", hpm_group-ids_group);
+	count += sprintf(&buf[count], "%s ", asv_grade);
+
+	count += sprintf(&buf[count], "\n");
+	return count;
+}
+
+static struct sysfs_attr asv_group_info =
+		__ATTR(asv_group_info, S_IRUGO,
+			show_asv_group_info, NULL);
+#endif /* CONFIG_SEC_PM */
+
 int exynos5410_init_asv(struct asv_common *asv_info)
 {
 	struct clk *clk_chipid;
 	unsigned int chip_id3_value;
 	unsigned int chip_id4_value;
+#ifdef CONFIG_SEC_PM
+	int ret = 0;
+#endif
 
 	special_lot_group = 0;
 	is_special_lot = false;
@@ -775,6 +862,12 @@ set_asv_info:
 	clk_disable(clk_chipid);
 
 	asv_info->regist_asv_member = exynos5410_regist_asv_member;
+
+#ifdef CONFIG_SEC_PM
+	ret = sysfs_create_file(power_kobj, &asv_group_info.attr);
+	if (ret)
+		return ret;
+#endif
 
 	return 0;
 }

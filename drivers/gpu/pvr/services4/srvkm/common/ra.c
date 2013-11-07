@@ -734,7 +734,7 @@ _InsertResourceSpan (RA_ARENA *pArena, IMG_UINTPTR_T base, IMG_SIZE_T uSize)
 	}
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			  "RA_InsertResourceSpan: arena='%s', base=0x" UINTPTR_FMT ", size=0x%x",
+			  "RA_InsertResourceSpan: arena='%s', base=0x" UINTPTR_FMT ", size=0x%" SIZE_T_FMT_LEN "x",
 			  pArena->name, base, uSize));
 
 	pSpanStart = _BuildSpanMarker (base, uSize);
@@ -1003,8 +1003,8 @@ _AttemptAllocAligned (RA_ARENA *pArena,
 					aligned_base = pBT->base;
 				PVR_DPF ((PVR_DBG_MESSAGE,
 						  "RA_AttemptAllocAligned: pBT-base=0x" UINTPTR_FMT " "
-						  "pBT-size=0x%x alignedbase=0x" 
-						  UINTPTR_FMT " size=0x%x",
+						  "pBT-size=0x%" SIZE_T_FMT_LEN "x alignedbase=0x" 
+						  UINTPTR_FMT " size=0x%" SIZE_T_FMT_LEN "x",
 						pBT->base, 
                         pBT->uSize, 
                         aligned_base, 
@@ -1152,7 +1152,7 @@ RA_Create (IMG_CHAR *name,
 	IMG_INT i;
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			  "RA_Create: name='%s', base=0x" UINTPTR_FMT ", uSize=0x%x, alloc=0x%p, free=0x%p",
+			  "RA_Create: name='%s', base=0x" UINTPTR_FMT ", uSize=0x%" SIZE_T_FMT_LEN "x, alloc=0x%p, free=0x%p",
 			  name, base, uSize, imp_alloc, imp_free));
 
 
@@ -1297,7 +1297,7 @@ RA_Delete (RA_ARENA *pArena)
 		{
 			PVR_DPF ((PVR_DBG_ERROR,"RA_Delete: allocations still exist in the arena that is being destroyed"));
 			PVR_DPF ((PVR_DBG_ERROR,"Likely Cause: client drivers not freeing alocations before destroying devmemcontext"));
-			PVR_DPF ((PVR_DBG_ERROR,"RA_Delete: base = 0x" UINTPTR_FMT " size=0x%x", pBT->base, pBT->uSize));
+			PVR_DPF ((PVR_DBG_ERROR,"RA_Delete: base = 0x" UINTPTR_FMT " size=0x%" SIZE_T_FMT_LEN "x", pBT->base, pBT->uSize));
 		}
 
 		_SegmentListRemove (pArena, pBT);
@@ -1353,7 +1353,7 @@ RA_TestDelete (RA_ARENA *pArena)
 			if (pBT->type != btt_free)
 			{
 				PVR_DPF ((PVR_DBG_ERROR,"RA_TestDelete: detected resource leak!"));
-				PVR_DPF ((PVR_DBG_ERROR,"RA_TestDelete: base = 0x" UINTPTR_FMT " size=0x%x", pBT->base, pBT->uSize));
+				PVR_DPF ((PVR_DBG_ERROR,"RA_TestDelete: base = 0x" UINTPTR_FMT " size=0x%" SIZE_T_FMT_LEN "x", pBT->base, pBT->uSize));
 				return IMG_FALSE;
 			}
 		}
@@ -1388,7 +1388,7 @@ RA_Add (RA_ARENA *pArena, IMG_UINTPTR_T base, IMG_SIZE_T uSize)
 	}
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			  "RA_Add: name='%s', base=0x" UINTPTR_FMT ", size=0x%x", pArena->name, base, uSize));
+			  "RA_Add: name='%s', base=0x" UINTPTR_FMT ", size=0x%" SIZE_T_FMT_LEN "x", pArena->name, base, uSize));
 
 	uSize = (uSize + pArena->uQuantum - 1) / pArena->uQuantum * pArena->uQuantum;
 	return ((IMG_BOOL)(_InsertResource (pArena, base, uSize) != IMG_NULL));
@@ -1454,7 +1454,7 @@ RA_Alloc (RA_ARENA *pArena,
 	}
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			  "RA_Alloc: arena='%s', size=0x%x(0x%x), alignment=0x%x, offset=0x%x",
+			  "RA_Alloc: arena='%s', size=0x%" SIZE_T_FMT_LEN "x(0x%" SIZE_T_FMT_LEN "x), alignment=0x%x, offset=0x%x",
 		   pArena->name, uSize, uRequestSize, uAlignment, uAlignmentOffset));
 
 	/* if allocation failed then we might have an import source which
@@ -1497,7 +1497,7 @@ RA_Alloc (RA_ARENA *pArena,
 				pArena->pImportFree(pArena->pImportHandle, import_base,
 									psImportMapping);
 				PVR_DPF ((PVR_DBG_MESSAGE,
-						  "RA_Alloc: name='%s', size=0x%x failed!",
+						  "RA_Alloc: name='%s', size=0x%" SIZE_T_FMT_LEN "x failed!",
 						  pArena->name, uSize));
 				/* RA_Dump (arena); */
 				return IMG_FALSE;
@@ -1526,7 +1526,7 @@ RA_Alloc (RA_ARENA *pArena,
 #endif
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			  "RA_Alloc: name='%s', size=0x%x, *base=0x" UINTPTR_FMT " = %d",
+			  "RA_Alloc: name='%s', size=0x%" SIZE_T_FMT_LEN "x, *base=0x" UINTPTR_FMT " = %d",
 			  pArena->name, uSize, *base, bResult));
 
 	/*  RA_Dump (pArena);
@@ -1816,7 +1816,7 @@ RA_Free (RA_ARENA *pArena, IMG_UINTPTR_T base, IMG_BOOL bFreeBackingStore)
 		*p++ = 0xAA;
 	}
 	PVR_DPF((PVR_DBG_MESSAGE,
-			"BM_FREESPACE_CHECK: RA_Free Cleared %p to %p (size=0x%x)",
+			"BM_FREESPACE_CHECK: RA_Free Cleared %p to %p (size=0x%" SIZE_T_FMT_LEN "x)",
 			(IMG_BYTE*)pBT->base + SysGetDevicePhysOffset(),
 			endp - 1,
 			pBT->uSize));
@@ -1963,7 +1963,7 @@ RA_Dump (RA_ARENA *pArena)
 
 	for (pBT=pArena->pHeadSegment; pBT!=IMG_NULL; pBT=pBT->pNextSegment)
 	{
-		PVR_DPF ((PVR_DBG_MESSAGE,"\tbase=0x" UINTPTR_FMT " size=0x%x type=%s",
+		PVR_DPF ((PVR_DBG_MESSAGE,"\tbase=0x" UINTPTR_FMT " size=0x%" SIZE_T_FMT_LEN "x type=%s",
 				 pBT->base, pBT->uSize, _BTType (pBT->type)));
 	}
 
@@ -1986,37 +1986,37 @@ static void RA_ProcSeqShowInfo(struct seq_file *sfile, void* el)
 	switch (off)
 	{
 	case 1:
-		seq_printf(sfile, "quantum\t\t\t%u\n", pArena->uQuantum);
+		seq_printf(sfile, "quantum\t\t\t%" SIZE_T_FMT_LEN "u\n", pArena->uQuantum);
 		break;
 	case 2:
 		seq_printf(sfile, "import_handle\t\t%p\n", pArena->pImportHandle);
 		break;
 #ifdef RA_STATS
 	case 3:
-		seq_printf(sfile,"span count\t\t%u\n", pArena->sStatistics.uSpanCount);
+		seq_printf(sfile,"span count\t\t%" SIZE_T_FMT_LEN "u\n", pArena->sStatistics.uSpanCount);
 		break;
 	case 4:
-		seq_printf(sfile, "live segment count\t%u\n", pArena->sStatistics.uLiveSegmentCount);
+		seq_printf(sfile, "live segment count\t%" SIZE_T_FMT_LEN "u\n", pArena->sStatistics.uLiveSegmentCount);
 		break;
 	case 5:
-		seq_printf(sfile, "free segment count\t%u\n", pArena->sStatistics.uFreeSegmentCount);
+		seq_printf(sfile, "free segment count\t%" SIZE_T_FMT_LEN "u\n", pArena->sStatistics.uFreeSegmentCount);
 		break;
 	case 6:
-		seq_printf(sfile, "free resource count\t%u (0x%x)\n",
+		seq_printf(sfile, "free resource count\t%" SIZE_T_FMT_LEN "u (0x%" SIZE_T_FMT_LEN "x)\n",
 							pArena->sStatistics.uFreeResourceCount,
 							pArena->sStatistics.uFreeResourceCount);
 		break;
 	case 7:
-		seq_printf(sfile, "total allocs\t\t%u\n", pArena->sStatistics.uCumulativeAllocs);
+		seq_printf(sfile, "total allocs\t\t%" SIZE_T_FMT_LEN "u\n", pArena->sStatistics.uCumulativeAllocs);
 		break;
 	case 8:
-		seq_printf(sfile, "total frees\t\t%u\n", pArena->sStatistics.uCumulativeFrees);
+		seq_printf(sfile, "total frees\t\t%" SIZE_T_FMT_LEN "u\n", pArena->sStatistics.uCumulativeFrees);
 		break;
 	case 9:
-		seq_printf(sfile, "import count\t\t%u\n", pArena->sStatistics.uImportCount);
+		seq_printf(sfile, "import count\t\t%" SIZE_T_FMT_LEN "u\n", pArena->sStatistics.uImportCount);
 		break;
 	case 10:
-		seq_printf(sfile, "export count\t\t%u\n", pArena->sStatistics.uExportCount);
+		seq_printf(sfile, "export count\t\t%" SIZE_T_FMT_LEN "u\n", pArena->sStatistics.uExportCount);
 		break;
 #endif
 	}
@@ -2048,7 +2048,7 @@ static void RA_ProcSeqShowRegs(struct seq_file *sfile, void* el)
 
 	if (pBT)
 	{
-		seq_printf(sfile, "%p %x %4s %p\n",
+		seq_printf(sfile, "%p %" SIZE_T_FMT_LEN "x %4s %p\n",
 				   (IMG_PVOID)pBT->base, pBT->uSize, _BTType (pBT->type),
 			       pBT->psMapping);
 	}
@@ -2099,7 +2099,7 @@ PVRSRV_ERROR RA_GetStats(RA_ARENA *pArena,
 
 
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "  allocCB=%p freeCB=%p handle=%p quantum=%u\n",
+	i32Count = OSSNPrintf(pszStr, 100, "  allocCB=%p freeCB=%p handle=%p quantum=%" SIZE_T_FMT_LEN "u\n",
 							 pArena->pImportAlloc,
 							 pArena->pImportFree,
 							 pArena->pImportHandle,
@@ -2107,43 +2107,43 @@ PVRSRV_ERROR RA_GetStats(RA_ARENA *pArena,
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);
 
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "span count\t\t%u\n", 
+	i32Count = OSSNPrintf(pszStr, 100, "span count\t\t%" SIZE_T_FMT_LEN "u\n", 
                              pArena->sStatistics.uSpanCount);
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);
 
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "live segment count\t%u\n", 
+	i32Count = OSSNPrintf(pszStr, 100, "live segment count\t%" SIZE_T_FMT_LEN "u\n", 
                              pArena->sStatistics.uLiveSegmentCount);
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);
 
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "free segment count\t%u\n", 
+	i32Count = OSSNPrintf(pszStr, 100, "free segment count\t%" SIZE_T_FMT_LEN "u\n", 
                              pArena->sStatistics.uFreeSegmentCount);
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);
 
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "free resource count\t%u (0x%x)\n",
+	i32Count = OSSNPrintf(pszStr, 100, "free resource count\t%" SIZE_T_FMT_LEN "u (0x%" SIZE_T_FMT_LEN "x)\n",
 							pArena->sStatistics.uFreeResourceCount,
 							pArena->sStatistics.uFreeResourceCount);
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);
 
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "total allocs\t\t%u\n", 
+	i32Count = OSSNPrintf(pszStr, 100, "total allocs\t\t%" SIZE_T_FMT_LEN "u\n", 
                             pArena->sStatistics.uCumulativeAllocs);
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);
 
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "total frees\t\t%u\n", 
+	i32Count = OSSNPrintf(pszStr, 100, "total frees\t\t%" SIZE_T_FMT_LEN "u\n", 
                             pArena->sStatistics.uCumulativeFrees);
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);
 
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "import count\t\t%u\n", 
+	i32Count = OSSNPrintf(pszStr, 100, "import count\t\t%" SIZE_T_FMT_LEN "u\n", 
                             pArena->sStatistics.uImportCount);
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);
 
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "export count\t\t%u\n", 
+	i32Count = OSSNPrintf(pszStr, 100, "export count\t\t%" SIZE_T_FMT_LEN "u\n", 
                             pArena->sStatistics.uExportCount);
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);
 
@@ -2170,7 +2170,7 @@ PVRSRV_ERROR RA_GetStats(RA_ARENA *pArena,
 	for (pBT=pArena->pHeadSegment; pBT!=IMG_NULL; pBT=pBT->pNextSegment)
 	{
 		CHECK_SPACE(ui32StrLen);
-		i32Count = OSSNPrintf(pszStr, 100, "\tbase=0x%p size=0x%x type=%s ref=%p\n",
+		i32Count = OSSNPrintf(pszStr, 100, "\tbase=0x%p size=0x%" SIZE_T_FMT_LEN "x type=%s ref=%p\n",
 											 (void *)pBT->base,
 											 pBT->uSize,
 											 _BTType(pBT->type),
@@ -2192,7 +2192,7 @@ PVRSRV_ERROR RA_GetStatsFreeMem(RA_ARENA *pArena,
 	IMG_UINT32 	ui32StrLen = *pui32StrLen;
 	IMG_INT32	i32Count;
 	CHECK_SPACE(ui32StrLen);
-	i32Count = OSSNPrintf(pszStr, 100, "Bytes free: Arena %-30s: %u (0x%x)\n", pArena->name,
+	i32Count = OSSNPrintf(pszStr, 100, "Bytes free: Arena %-30s: %" SIZE_T_FMT_LEN "u (0x%" SIZE_T_FMT_LEN "x)\n", pArena->name,
 		pArena->sStatistics.uFreeResourceCount,
 		pArena->sStatistics.uFreeResourceCount);
 	UPDATE_SPACE(pszStr, i32Count, ui32StrLen);

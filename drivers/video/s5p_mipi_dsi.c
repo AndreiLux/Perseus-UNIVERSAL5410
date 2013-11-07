@@ -633,13 +633,7 @@ static int s5p_mipi_dsi_init_dsim(struct mipi_dsim_device *dsim)
 	};
 
 	s5p_mipi_dsi_sw_reset(dsim);
-#if defined(CONFIG_MACH_JA_KOR_LGT)
-	if(system_rev == 7) {
-		s5p_mipi_dsi_dp_dn_swap(dsim, 3);
-	}
-#else
 	s5p_mipi_dsi_dp_dn_swap(dsim, 0);
-#endif
 
 	return 0;
 }
@@ -901,20 +895,20 @@ static int s5p_mipi_dsi_enable(struct mipi_dsim_device *dsim)
 
 	dev_info(dsim->dev, "+%s\n", __func__);
 
-	if (lcd_pd && lcd_pd->power_on)
-		lcd_pd->power_on(NULL, 1);
+	pm_runtime_get_sync(&pdev->dev);
+	clk_enable(dsim->clock);
 
 	if (dsim->pd->mipi_power)
 		dsim->pd->mipi_power(dsim, 1);
 
-	if (lcd_pd && lcd_pd->reset)
-		lcd_pd->reset(NULL);
-
-	pm_runtime_get_sync(&pdev->dev);
-	clk_enable(dsim->clock);
+	if (lcd_pd && lcd_pd->power_on)
+		lcd_pd->power_on(NULL, 1);
 
 	s5p_mipi_dsi_init_dsim(dsim);
 	s5p_mipi_dsi_init_link(dsim);
+
+	if (lcd_pd && lcd_pd->reset)
+		lcd_pd->reset(NULL);
 
 	s5p_mipi_dsi_set_data_transfer_mode(dsim, 0);
 	s5p_mipi_dsi_set_display_mode(dsim, dsim->dsim_config);
@@ -931,7 +925,7 @@ static int s5p_mipi_dsi_enable(struct mipi_dsim_device *dsim)
 	dsim->enabled = true;
 
 	usleep_range(18000, 18000);
-	
+
 	dsim->dsim_lcd_drv->displayon(dsim);
 
 	dev_info(dsim->dev, "-%s\n", __func__);

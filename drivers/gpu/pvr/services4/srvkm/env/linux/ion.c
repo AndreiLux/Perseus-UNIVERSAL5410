@@ -87,7 +87,7 @@ void PVRSRVExportFDToIONHandles(int fd, struct ion_client **client,
 	struct file *psFile;
 
 	/* Take the bridge mutex so the handle won't be freed underneath us */
-	LinuxLockMutex(&gPVRSRVLock);
+	LinuxLockMutexNested(&gPVRSRVLock, PVRSRV_LOCK_CLASS_BRIDGE);
 
 	psFile = fget(fd);
 	if(!psFile)
@@ -263,161 +263,196 @@ IMG_VOID IonDeinit(IMG_VOID)
 
 #endif /* defined(CONFIG_ION_OMAP) */
 
+#define MAX_IMPORT_ION_FDS 3
+
 typedef struct _ION_IMPORT_DATA_
 {
+	/* ion client handles are imported into */
 	struct ion_client *psIonClient;
-	struct ion_handle *psIonHandle;
-	IMG_SYS_PHYADDR *pasSysPhysAddr;
-	IMG_PVOID pvKernAddr;
-} ION_IMPORT_DATA;
 
-PVRSRV_ERROR IonImportBufferAndAquirePhysAddr(IMG_HANDLE hIonDev,
-											  IMG_HANDLE hIonFD,
-											  IMG_UINT32 *pui32PageCount,
-											  IMG_SYS_PHYADDR **ppasSysPhysAddr,
-											  IMG_PVOID *ppvKernAddr,
-											  IMG_HANDLE *phPriv,
-											  IMG_HANDLE *phUnique)
+	/* Number of ion handles represented by this import */
+	IMG_UINT32 ui32NumIonHandles;
+
+	/* Array of ion handles in use by services */
+	struct ion_handle *apsIonHandle[MAX_IMPORT_ION_FDS];
+
+	/* Array of physical addresses represented by these buffers */
+	IMG_SYS_PHYADDR *psSysPhysAddr;
+
+	/* If ui32NumBuffers is 1 and ion_map_kernel() is implemented by the
+	 * allocator, this may be non-NULL. Otherwise it will be NULL.
+	 */
+	IMG_PVOID pvKernAddr0;
+}
+ION_IMPORT_DATA;
+
+PVRSRV_ERROR IonImportBufferAndAcquirePhysAddr(IMG_HANDLE hIonDev,
+											   IMG_UINT32 ui32NumFDs,
+											   IMG_INT32  *pai32BufferFDs,
+											   IMG_UINT32 *pui32PageCount,
+											   IMG_SYS_PHYADDR **ppsSysPhysAddr,
+											   IMG_PVOID  *ppvKernAddr0,
+											   IMG_HANDLE *phPriv,
+											   IMG_HANDLE *phUnique)
 {
+	struct scatterlist *psTemp, *psScatterList[MAX_IMPORT_ION_FDS] = {};
+	PVRSRV_ERROR eError = PVRSRV_ERROR_OUT_OF_MEMORY;
 	struct ion_client *psIonClient = hIonDev;
-	struct ion_handle *psIonHandle;
-	struct scatterlist *psScatterList;
-	struct scatterlist *psTemp;
-	IMG_SYS_PHYADDR *pasSysPhysAddr = NULL;
+	IMG_UINT32 i, k, ui32PageCount = 0;
 	ION_IMPORT_DATA *psImportData;
-	PVRSRV_ERROR eError;
-	IMG_UINT32 ui32PageCount = 0;
-	IMG_UINT32 i;
-	IMG_PVOID pvKernAddr;
-	int fd = (int) hIonFD;
-//S.LSI
 #if defined (EXYNOS_ION_DMA_BUFFER_FD)
-	struct sg_table *pSgtable;
+    struct sg_table *pSgtable;
 #endif
 
-	psImportData = kmalloc(sizeof(ION_IMPORT_DATA), GFP_KERNEL);
+	if(ui32NumFDs > MAX_IMPORT_ION_FDS)
+	{
+		printk(KERN_ERR "%s: More ion export fds passed in than supported "
+						"(%d provided, %d max)", __func__, ui32NumFDs,
+						MAX_IMPORT_ION_FDS);
+		return PVRSRV_ERROR_INVALID_PARAMS;
+	}
+
+	psImportData = kzalloc(sizeof(ION_IMPORT_DATA), GFP_KERNEL);
 	if (psImportData == NULL)
 	{
-		return PVRSRV_ERROR_OUT_OF_MEMORY;
+		goto exitFailKMallocImportData;
 	}
-//S.LSI
+
+	/* Set up import data for free call */
+	psImportData->psIonClient = psIonClient;
+	psImportData->ui32NumIonHandles = ui32NumFDs;
+
+	for(i = 0; i < ui32NumFDs; i++)
+	{
+		int fd = (int)pai32BufferFDs[i];
+
 #if defined (EXYNOS_ION_DMA_BUFFER_FD)
-	/* Get the buffer handle */
-	psIonHandle = ion_import_dma_buf(psIonClient, fd);
+		/* Get the buffer handle */
+		psImportData->apsIonHandle[i] = ion_import_dma_buf(psIonClient, fd);
+		if (IS_ERR_OR_NULL(psImportData->apsIonHandle[i]))
+		{
+			eError = PVRSRV_ERROR_INVALID_PARAMS;
+			goto exitFailImport;
+		}
 #else
-	/* Get the buffer handle */
-	psIonHandle = ion_import_fd(psIonClient, fd);
+		psImportData->apsIonHandle[i] = ion_import_fd(psIonClient, fd);
+		if (psImportData->apsIonHandle[i] == IMG_NULL)
+		{
+			eError = PVRSRV_ERROR_BAD_MAPPING;
+			goto exitFailImport;
+		}
 #endif
 
-	if (psIonHandle == IMG_NULL)
+#if defined (EXYNOS_ION_DMA_BUFFER_FD)
+		pSgtable = ion_sg_table(psIonClient, psImportData->apsIonHandle[i]);
+		if (IS_ERR_OR_NULL(pSgtable))
+		{
+			eError = PVRSRV_ERROR_INVALID_PARAMS;
+			goto exitFailImport;
+		}
+		psScatterList[i] = pSgtable->sgl;
+#else
+		psScatterList[i] = ion_map_dma(psIonClient, psImportData->apsIonHandle[i]);
+#endif
+
+		if (psScatterList[i] == NULL)
+		{
+			eError = PVRSRV_ERROR_INVALID_PARAMS;
+			goto exitFailImport;
+		}
+
+		for(psTemp = psScatterList[i]; psTemp; psTemp = sg_next(psTemp))
+		{
+			IMG_UINT32 j;
+			for (j = 0; j < psTemp->length; j += PAGE_SIZE)
+			{
+				ui32PageCount++;
+			}
+		}
+	}
+
+	BUG_ON(ui32PageCount == 0);
+
+	psImportData->psSysPhysAddr = kmalloc(sizeof(IMG_SYS_PHYADDR) * ui32PageCount, GFP_KERNEL);
+	if (psImportData->psSysPhysAddr == NULL)
 	{
-		eError = PVRSRV_ERROR_BAD_MAPPING;
 		goto exitFailImport;
 	}
 
-	/* Create data for free callback */
-	psImportData->psIonClient = psIonClient;
-	psImportData->psIonHandle = psIonHandle;	
-//S.LSI
-#if defined (EXYNOS_ION_DMA_BUFFER_FD)
-	pSgtable = ion_sg_table(psIonClient, psIonHandle);
-	psScatterList = pSgtable->sgl;
-#else
-	psScatterList = ion_map_dma(psIonClient, psIonHandle);
-#endif
-
-	if (psScatterList == NULL)
+	for(i = 0, k = 0; i < ui32NumFDs; i++)
 	{
-		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto exitFailMap;
-	}
-
-	/*
-		We do a two pass process, 1st workout how many pages there
-		are, 2nd fill in the data.
-	*/
-	for (i=0;i<2;i++)
-	{
-		psTemp = psScatterList;
-		if (i == 1)
-		{
-			pasSysPhysAddr = kmalloc(sizeof(IMG_SYS_PHYADDR) * ui32PageCount,
-									 GFP_KERNEL);
-			if (pasSysPhysAddr == NULL)
-			{
-				eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-				goto exitFailAlloc;
-			}
-			ui32PageCount = 0;	/* Reset the page count a we use if for the index */
-		}
-
-		while(psTemp)
+		for(psTemp = psScatterList[i]; psTemp; psTemp = sg_next(psTemp))
 		{
 			IMG_UINT32 j;
-
-			for (j=0;j<psTemp->length;j+=PAGE_SIZE)
+			for (j = 0; j < psTemp->length; j += PAGE_SIZE)
 			{
-				if (i == 1)
-				{
-					//S.LSI
-					/* Pass 2: Get the page data */
-					pasSysPhysAddr[ui32PageCount].uiAddr = sg_phys(psTemp) + j;
-				}
-				ui32PageCount++;
+				psImportData->psSysPhysAddr[k].uiAddr = sg_phys(psTemp) + j;
+				k++;
 			}
-			psTemp = sg_next(psTemp);
 		}
 	}
 
-	pvKernAddr = ion_map_kernel(psIonClient, psIonHandle);
-	if (IS_ERR(pvKernAddr))
+	*pui32PageCount = ui32PageCount;
+	*ppsSysPhysAddr = psImportData->psSysPhysAddr;
+
+	if(ui32NumFDs == 1)
 	{
-		pvKernAddr = IMG_NULL;
+		IMG_PVOID pvKernAddr0;
+
+		pvKernAddr0 = ion_map_kernel(psIonClient, psImportData->apsIonHandle[0]);
+		if (IS_ERR(pvKernAddr0))
+		{
+			pvKernAddr0 = IMG_NULL;
+		}
+
+		psImportData->pvKernAddr0 = pvKernAddr0;
+		*ppvKernAddr0 = pvKernAddr0;
+	}
+	else
+	{
+		*ppvKernAddr0 = NULL;
 	}
 
-	psImportData->pvKernAddr = pvKernAddr;
-	psImportData->pasSysPhysAddr = pasSysPhysAddr;
-
-	*ppvKernAddr = pvKernAddr;
-	*pui32PageCount = ui32PageCount;
-	*ppasSysPhysAddr = pasSysPhysAddr;
 	*phPriv = psImportData;
-	/*
-		Note:
-		The only unique thing we can acquire from an ion_buffer
-		is it's address. The ion_handle we obtain in this function
-		is only unique to the ion_client.
-	*/
-	*phUnique = (IMG_HANDLE)pasSysPhysAddr[0].uiAddr;
+	*phUnique = (IMG_HANDLE)psImportData->psSysPhysAddr[0].uiAddr;
+
 	return PVRSRV_OK;
 
-exitFailAlloc:
-//S.LSI
+exitFailImport:
+	for(i = 0; psImportData->apsIonHandle[i] != NULL; i++)
+	{
 #if defined (EXYNOS_ION_DMA_BUFFER_FD)
 #else
-	ion_unmap_dma(psIonClient, psIonHandle);
+		if(psScatterList[i])
+			ion_unmap_dma(psIonClient, psImportData->apsIonHandle[i]);
 #endif
-exitFailMap:
-	ion_free(psIonClient, psIonHandle);
-exitFailImport:
+		ion_free(psIonClient, psImportData->apsIonHandle[i]);
+	}
 	kfree(psImportData);
+exitFailKMallocImportData:
 	return eError;
 }
 
 IMG_VOID IonUnimportBufferAndReleasePhysAddr(IMG_HANDLE hPriv)
 {
 	ION_IMPORT_DATA *psImportData = hPriv;
-//S.LSI
+	IMG_UINT32 i;
+
+	if (psImportData->pvKernAddr0)
+	{
+		ion_unmap_kernel(psImportData->psIonClient, psImportData->apsIonHandle[0]);
+	}
+
+	for(i = 0; i < psImportData->ui32NumIonHandles; i++)
+	{
 #if defined (EXYNOS_ION_DMA_BUFFER_FD)
 #else
-	ion_unmap_dma(psImportData->psIonClient, psImportData->psIonHandle);
+		ion_unmap_dma(psImportData->psIonClient, psImportData->apsIonHandle[i]);
 #endif
-	if (psImportData->pvKernAddr)
-	{
-		ion_unmap_kernel(psImportData->psIonClient, psImportData->psIonHandle);
+		ion_free(psImportData->psIonClient, psImportData->apsIonHandle[i]);
 	}
-	kfree(psImportData->pasSysPhysAddr);
-	ion_free(psImportData->psIonClient, psImportData->psIonHandle);
+
+	kfree(psImportData->psSysPhysAddr);
 	kfree(psImportData);
 }
 

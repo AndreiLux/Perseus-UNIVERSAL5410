@@ -240,81 +240,108 @@ void report_temp_humidity_data(struct ssp_data *data,
 		wake_lock_timeout(&data->ssp_wake_lock, 2 * HZ);
 }
 
+void report_sig_motion_data(struct ssp_data *data,
+	struct sensor_value *sig_motion_data)
+{
+	data->buf[SIG_MOTION_SENSOR].sig_motion = sig_motion_data->sig_motion;
+
+	input_report_rel(data->sig_motion_input_dev, REL_MISC,
+		data->buf[SIG_MOTION_SENSOR].sig_motion);
+	input_sync(data->sig_motion_input_dev);
+}
+
+#ifdef FEATURE_STEP_SENSOR
+void report_step_det_data(struct ssp_data *data,
+	struct sensor_value *sig_motion_data)
+{
+	data->buf[STEP_DETECTOR].step_det = sig_motion_data->step_det;
+
+	input_report_rel(data->step_det_input_dev, REL_MISC,
+		data->buf[STEP_DETECTOR].step_det + 1);
+	input_sync(data->step_det_input_dev);
+}
+
+void report_step_cnt_data(struct ssp_data *data,
+	struct sensor_value *sig_motion_data)
+{
+	data->buf[STEP_COUNTER].step_diff = sig_motion_data->step_diff;
+
+	data->step_count_total += data->buf[STEP_COUNTER].step_diff;
+
+	input_report_rel(data->step_cnt_input_dev, REL_MISC,
+		data->step_count_total + 1);
+	input_sync(data->step_cnt_input_dev);
+}
+#endif
+
 int initialize_event_symlink(struct ssp_data *data)
 {
 	int iRet = 0;
 
-	data->sen_dev = device_create(sensors_event_class, NULL, 0, NULL,
-		"%s", "symlink");
-
-	iRet = sysfs_create_link(&data->sen_dev->kobj,
-		&data->acc_input_dev->dev.kobj,
-		data->acc_input_dev->name);
+	iRet = sensors_create_symlink(data->acc_input_dev);
 	if (iRet < 0)
 		goto iRet_acc_sysfs_create_link;
 
-	iRet = sysfs_create_link(&data->sen_dev->kobj,
-		&data->gyro_input_dev->dev.kobj,
-		data->gyro_input_dev->name);
+	iRet = sensors_create_symlink(data->gyro_input_dev);
 	if (iRet < 0)
 		goto iRet_gyro_sysfs_create_link;
 
-	iRet = sysfs_create_link(&data->sen_dev->kobj,
-		&data->pressure_input_dev->dev.kobj,
-		data->pressure_input_dev->name);
+	iRet = sensors_create_symlink(data->pressure_input_dev);
 	if (iRet < 0)
 		goto iRet_prs_sysfs_create_link;
 
-	iRet = sysfs_create_link(&data->sen_dev->kobj,
-		&data->light_input_dev->dev.kobj,
-		data->light_input_dev->name);
+	iRet = sensors_create_symlink(data->light_input_dev);
 	if (iRet < 0)
 		goto iRet_light_sysfs_create_link;
 
-	iRet = sysfs_create_link(&data->sen_dev->kobj,
-		&data->prox_input_dev->dev.kobj,
-		data->prox_input_dev->name);
+	iRet = sensors_create_symlink(data->prox_input_dev);
 	if (iRet < 0)
 		goto iRet_prox_sysfs_create_link;
 
-	iRet = sysfs_create_link(&data->sen_dev->kobj,
-		&data->temp_humi_input_dev->dev.kobj,
-		data->temp_humi_input_dev->name);
+	iRet = sensors_create_symlink(data->temp_humi_input_dev);
 	if (iRet < 0)
 		goto iRet_temp_humi_sysfs_create_link;
 
-	iRet = sysfs_create_link(&data->sen_dev->kobj,
-		&data->gesture_input_dev->dev.kobj,
-		data->gesture_input_dev->name);
+	iRet = sensors_create_symlink(data->gesture_input_dev);
 	if (iRet < 0)
 		goto iRet_gesture_sysfs_create_link;
 
+	iRet = sensors_create_symlink(data->sig_motion_input_dev);
+	if (iRet < 0)
+		goto iRet_sig_motion_sysfs_create_link;
+
+#ifdef FEATURE_STEP_SENSOR
+	iRet = sensors_create_symlink(data->step_det_input_dev);
+	if (iRet < 0)
+		goto iRet_step_det_sysfs_create_link;
+
+	iRet = sensors_create_symlink(data->step_cnt_input_dev);
+	if (iRet < 0)
+		goto iRet_step_cnt_sysfs_create_link;
+#endif
+
 	return SUCCESS;
 
+#ifdef FEATURE_STEP_SENSOR
+iRet_step_cnt_sysfs_create_link:
+	sensors_remove_symlink(data->step_det_input_dev);
+iRet_step_det_sysfs_create_link:
+	sensors_remove_symlink(data->sig_motion_input_dev);
+#endif
+iRet_sig_motion_sysfs_create_link:
+	sensors_remove_symlink(data->gesture_input_dev);
 iRet_gesture_sysfs_create_link:
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->temp_humi_input_dev->dev.kobj,
-		data->temp_humi_input_dev->name);
+	sensors_remove_symlink(data->temp_humi_input_dev);
 iRet_temp_humi_sysfs_create_link:
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->prox_input_dev->dev.kobj,
-		data->prox_input_dev->name);
+	sensors_remove_symlink(data->prox_input_dev);
 iRet_prox_sysfs_create_link:
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->light_input_dev->dev.kobj,
-		data->light_input_dev->name);
+	sensors_remove_symlink(data->light_input_dev);
 iRet_light_sysfs_create_link:
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->pressure_input_dev->dev.kobj,
-		data->pressure_input_dev->name);
+	sensors_remove_symlink(data->pressure_input_dev);
 iRet_prs_sysfs_create_link:
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->gyro_input_dev->dev.kobj,
-		data->gyro_input_dev->name);
+	sensors_remove_symlink(data->gyro_input_dev);
 iRet_gyro_sysfs_create_link:
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->acc_input_dev->dev.kobj,
-		data->acc_input_dev->name);
+	sensors_remove_symlink(data->acc_input_dev);
 iRet_acc_sysfs_create_link:
 	pr_err("[SSP]: %s - could not create event symlink\n", __func__);
 
@@ -323,212 +350,211 @@ iRet_acc_sysfs_create_link:
 
 void remove_event_symlink(struct ssp_data *data)
 {
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->acc_input_dev->dev.kobj,
-		data->acc_input_dev->name);
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->gyro_input_dev->dev.kobj,
-		data->gyro_input_dev->name);
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->pressure_input_dev->dev.kobj,
-		data->pressure_input_dev->name);
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->light_input_dev->dev.kobj,
-		data->light_input_dev->name);
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->prox_input_dev->dev.kobj,
-		data->prox_input_dev->name);
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->temp_humi_input_dev->dev.kobj,
-		data->temp_humi_input_dev->name);
-	sysfs_delete_link(&data->sen_dev->kobj,
-		&data->gesture_input_dev->dev.kobj,
-		data->gesture_input_dev->name);
+	sensors_remove_symlink(data->acc_input_dev);
+	sensors_remove_symlink(data->gyro_input_dev);
+	sensors_remove_symlink(data->pressure_input_dev);
+	sensors_remove_symlink(data->light_input_dev);
+	sensors_remove_symlink(data->prox_input_dev);
+	sensors_remove_symlink(data->temp_humi_input_dev);
+	sensors_remove_symlink(data->gesture_input_dev);
+	sensors_remove_symlink(data->sig_motion_input_dev);
+#ifdef FEATURE_STEP_SENSOR
+	sensors_remove_symlink(data->step_det_input_dev);
+	sensors_remove_symlink(data->step_cnt_input_dev);
+#endif
 }
 
 int initialize_input_dev(struct ssp_data *data)
 {
 	int iRet = 0;
-	struct input_dev *acc_input_dev, *gyro_input_dev, *pressure_input_dev,
-		*light_input_dev, *prox_input_dev, *gesture_input_dev,
-		*temp_humi_input_dev;
 
-	/* allocate input_device */
-	acc_input_dev = input_allocate_device();
-	if (acc_input_dev == NULL)
-		goto iRet_acc_input_free_device;
+	data->acc_input_dev = input_allocate_device();
+	if (data->acc_input_dev == NULL)
+		goto err_initialize_acc_input_dev;
 
-	gyro_input_dev = input_allocate_device();
-	if (gyro_input_dev == NULL)
-		goto iRet_gyro_input_free_device;
+	data->acc_input_dev->name = "accelerometer_sensor";
+	input_set_capability(data->acc_input_dev, EV_REL, REL_X);
+	input_set_capability(data->acc_input_dev, EV_REL, REL_Y);
+	input_set_capability(data->acc_input_dev, EV_REL, REL_Z);
 
-	pressure_input_dev = input_allocate_device();
-	if (pressure_input_dev == NULL)
-		goto iRet_pressure_input_free_device;
-
-	light_input_dev = input_allocate_device();
-	if (light_input_dev == NULL)
-		goto iRet_light_input_free_device;
-
-	prox_input_dev = input_allocate_device();
-	if (prox_input_dev == NULL)
-		goto iRet_proximity_input_free_device;
-
-	temp_humi_input_dev = input_allocate_device();
-	if (temp_humi_input_dev == NULL)
-		goto iRet_temp_humidity_input_free_device;
-
-	gesture_input_dev = input_allocate_device();
-	if (gesture_input_dev == NULL)
-		goto iRet_gesture_input_free_device;
-
-	input_set_drvdata(acc_input_dev, data);
-	input_set_drvdata(gyro_input_dev, data);
-	input_set_drvdata(pressure_input_dev, data);
-	input_set_drvdata(light_input_dev, data);
-	input_set_drvdata(prox_input_dev, data);
-	input_set_drvdata(temp_humi_input_dev, data);
-	input_set_drvdata(gesture_input_dev, data);
-
-	acc_input_dev->name = "accelerometer_sensor";
-	gyro_input_dev->name = "gyro_sensor";
-	pressure_input_dev->name = "pressure_sensor";
-	gesture_input_dev->name = "gesture_sensor";
-	light_input_dev->name = "light_sensor";
-	prox_input_dev->name = "proximity_sensor";
-	temp_humi_input_dev->name = "temp_humidity_sensor";
-
-	input_set_capability(acc_input_dev, EV_REL, REL_X);
-	input_set_capability(acc_input_dev, EV_REL, REL_Y);
-	input_set_capability(acc_input_dev, EV_REL, REL_Z);
-
-	input_set_capability(gyro_input_dev, EV_REL, REL_RX);
-	input_set_capability(gyro_input_dev, EV_REL, REL_RY);
-	input_set_capability(gyro_input_dev, EV_REL, REL_RZ);
-
-	input_set_capability(pressure_input_dev, EV_REL, REL_HWHEEL);
-	input_set_capability(pressure_input_dev, EV_REL, REL_DIAL);
-	input_set_capability(pressure_input_dev, EV_REL, REL_WHEEL);
-
-	input_set_capability(light_input_dev, EV_REL, REL_HWHEEL);
-	input_set_capability(light_input_dev, EV_REL, REL_DIAL);
-	input_set_capability(light_input_dev, EV_REL, REL_WHEEL);
-	input_set_capability(light_input_dev, EV_REL, REL_MISC);
-
-	input_set_capability(gesture_input_dev, EV_ABS, ABS_RUDDER);
-	input_set_abs_params(gesture_input_dev, ABS_RUDDER, 0, 1024, 0, 0);
-	input_set_capability(gesture_input_dev, EV_ABS, ABS_WHEEL);
-	input_set_abs_params(gesture_input_dev, ABS_WHEEL, 0, 1024, 0, 0);
-	input_set_capability(gesture_input_dev, EV_ABS, ABS_GAS);
-	input_set_abs_params(gesture_input_dev, ABS_GAS, 0, 1024, 0, 0);
-	input_set_capability(gesture_input_dev, EV_ABS, ABS_BRAKE);
-	input_set_abs_params(gesture_input_dev, ABS_BRAKE, 0, 1024, 0, 0);
-	input_set_capability(gesture_input_dev, EV_ABS, ABS_THROTTLE);
-	input_set_abs_params(gesture_input_dev, ABS_THROTTLE, 0, 1024, 0, 0);
-
-	input_set_capability(prox_input_dev, EV_ABS, ABS_DISTANCE);
-	input_set_abs_params(prox_input_dev, ABS_DISTANCE, 0, 1, 0, 0);
-
-	input_set_capability(temp_humi_input_dev, EV_REL, REL_HWHEEL);
-	input_set_capability(temp_humi_input_dev, EV_REL, REL_DIAL);
-	input_set_capability(temp_humi_input_dev, EV_REL, REL_WHEEL);
-
-	/* register input_device */
-	iRet = input_register_device(acc_input_dev);
-	if (iRet < 0)
-		goto iRet_acc_input_unreg_device;
-
-	iRet = input_register_device(gyro_input_dev);
+	iRet = input_register_device(data->acc_input_dev);
 	if (iRet < 0) {
-		input_free_device(gyro_input_dev);
-		input_free_device(pressure_input_dev);
-		input_free_device(light_input_dev);
-		input_free_device(prox_input_dev);
-		input_free_device(temp_humi_input_dev);
-		input_free_device(gesture_input_dev);
-		goto iRet_gyro_input_unreg_device;
+		input_free_device(data->acc_input_dev);
+		goto err_initialize_acc_input_dev;
 	}
+	input_set_drvdata(data->acc_input_dev, data);
 
-	iRet = input_register_device(pressure_input_dev);
+	data->gyro_input_dev = input_allocate_device();
+	if (data->gyro_input_dev == NULL)
+		goto err_initialize_gyro_input_dev;
+
+	data->gyro_input_dev->name = "gyro_sensor";
+	input_set_capability(data->gyro_input_dev, EV_REL, REL_RX);
+	input_set_capability(data->gyro_input_dev, EV_REL, REL_RY);
+	input_set_capability(data->gyro_input_dev, EV_REL, REL_RZ);
+	iRet = input_register_device(data->gyro_input_dev);
 	if (iRet < 0) {
-		input_free_device(pressure_input_dev);
-		input_free_device(light_input_dev);
-		input_free_device(prox_input_dev);
-		input_free_device(temp_humi_input_dev);
-		input_free_device(gesture_input_dev);
-		goto iRet_pressure_input_unreg_device;
+		input_free_device(data->gyro_input_dev);
+		goto err_initialize_gyro_input_dev;
 	}
+	input_set_drvdata(data->gyro_input_dev, data);
 
-	iRet = input_register_device(light_input_dev);
+	data->pressure_input_dev = input_allocate_device();
+	if (data->pressure_input_dev == NULL)
+		goto err_initialize_pressure_input_dev;
+
+	data->pressure_input_dev->name = "pressure_sensor";
+	input_set_capability(data->pressure_input_dev, EV_REL, REL_HWHEEL);
+	input_set_capability(data->pressure_input_dev, EV_REL, REL_DIAL);
+	input_set_capability(data->pressure_input_dev, EV_REL, REL_WHEEL);
+	iRet = input_register_device(data->pressure_input_dev);
 	if (iRet < 0) {
-		input_free_device(light_input_dev);
-		input_free_device(prox_input_dev);
-		input_free_device(temp_humi_input_dev);
-		input_free_device(gesture_input_dev);
-		goto iRet_light_input_unreg_device;
+		input_free_device(data->pressure_input_dev);
+		goto err_initialize_pressure_input_dev;
 	}
+	input_set_drvdata(data->pressure_input_dev, data);
 
-	iRet = input_register_device(prox_input_dev);
+	data->light_input_dev = input_allocate_device();
+	if (data->light_input_dev == NULL)
+		goto err_initialize_light_input_dev;
+
+	data->light_input_dev->name = "light_sensor";
+	input_set_capability(data->light_input_dev, EV_REL, REL_HWHEEL);
+	input_set_capability(data->light_input_dev, EV_REL, REL_DIAL);
+	input_set_capability(data->light_input_dev, EV_REL, REL_WHEEL);
+	input_set_capability(data->light_input_dev, EV_REL, REL_MISC);
+	iRet = input_register_device(data->light_input_dev);
 	if (iRet < 0) {
-		input_free_device(prox_input_dev);
-		input_free_device(temp_humi_input_dev);
-		input_free_device(gesture_input_dev);
-		goto iRet_proximity_input_unreg_device;
+		input_free_device(data->light_input_dev);
+		goto err_initialize_light_input_dev;
 	}
+	input_set_drvdata(data->light_input_dev, data);
 
-	iRet = input_register_device(temp_humi_input_dev);
+	data->prox_input_dev = input_allocate_device();
+	if (data->prox_input_dev == NULL)
+		goto err_initialize_proximity_input_dev;
+
+	data->prox_input_dev->name = "proximity_sensor";
+	input_set_capability(data->prox_input_dev, EV_ABS, ABS_DISTANCE);
+	input_set_abs_params(data->prox_input_dev, ABS_DISTANCE, 0, 1, 0, 0);
+	iRet = input_register_device(data->prox_input_dev);
 	if (iRet < 0) {
-		input_free_device(temp_humi_input_dev);
-		input_free_device(gesture_input_dev);
-		goto iRet_tmep_humi_input_unreg_device;
+		input_free_device(data->prox_input_dev);
+		goto err_initialize_proximity_input_dev;
 	}
+	input_set_drvdata(data->prox_input_dev, data);
 
-	iRet = input_register_device(gesture_input_dev);
+	data->temp_humi_input_dev = input_allocate_device();
+	if (data->temp_humi_input_dev == NULL)
+		goto err_initialize_temp_humi_input_dev;
+
+	data->temp_humi_input_dev->name = "temp_humidity_sensor";
+	input_set_capability(data->temp_humi_input_dev, EV_REL, REL_HWHEEL);
+	input_set_capability(data->temp_humi_input_dev, EV_REL, REL_DIAL);
+	input_set_capability(data->temp_humi_input_dev, EV_REL, REL_WHEEL);
+	iRet = input_register_device(data->temp_humi_input_dev);
 	if (iRet < 0) {
-		input_free_device(gesture_input_dev);
-		goto iRet_gesture_input_unreg_device;
+		input_free_device(data->temp_humi_input_dev);
+		goto err_initialize_temp_humi_input_dev;
 	}
+	input_set_drvdata(data->temp_humi_input_dev, data);
 
-	data->acc_input_dev = acc_input_dev;
-	data->gyro_input_dev = gyro_input_dev;
-	data->pressure_input_dev = pressure_input_dev;
-	data->light_input_dev = light_input_dev;
-	data->prox_input_dev = prox_input_dev;
-	data->temp_humi_input_dev = temp_humi_input_dev;
-	data->gesture_input_dev = gesture_input_dev;
+	data->gesture_input_dev = input_allocate_device();
+	if (data->gesture_input_dev == NULL)
+		goto err_initialize_gesture_input_dev;
+
+	data->gesture_input_dev->name = "gesture_sensor";
+	input_set_capability(data->gesture_input_dev, EV_ABS, ABS_RUDDER);
+	input_set_abs_params(data->gesture_input_dev, ABS_RUDDER, 0, 1024, 0, 0);
+	input_set_capability(data->gesture_input_dev, EV_ABS, ABS_WHEEL);
+	input_set_abs_params(data->gesture_input_dev, ABS_WHEEL, 0, 1024, 0, 0);
+	input_set_capability(data->gesture_input_dev, EV_ABS, ABS_GAS);
+	input_set_abs_params(data->gesture_input_dev, ABS_GAS, 0, 1024, 0, 0);
+	input_set_capability(data->gesture_input_dev, EV_ABS, ABS_BRAKE);
+	input_set_abs_params(data->gesture_input_dev, ABS_BRAKE, 0, 1024, 0, 0);
+	input_set_capability(data->gesture_input_dev, EV_ABS, ABS_THROTTLE);
+	input_set_abs_params(data->gesture_input_dev, ABS_THROTTLE, 0, 1024, 0, 0);
+	iRet = input_register_device(data->gesture_input_dev);
+	if (iRet < 0) {
+		input_free_device(data->gesture_input_dev);
+		goto err_initialize_gesture_input_dev;
+	}
+	input_set_drvdata(data->gesture_input_dev, data);
+
+	data->sig_motion_input_dev = input_allocate_device();
+	if (data->sig_motion_input_dev == NULL)
+		goto err_initialize_sig_motion_input_dev;
+	data->sig_motion_input_dev->name = "sig_motion_sensor";
+	input_set_capability(data->sig_motion_input_dev, EV_REL, REL_MISC);
+
+	iRet = input_register_device(data->sig_motion_input_dev);
+	if (iRet < 0) {
+		input_free_device(data->sig_motion_input_dev);
+		goto err_initialize_sig_motion_input_dev;
+	}
+	input_set_drvdata(data->sig_motion_input_dev, data);
+
+#ifdef FEATURE_STEP_SENSOR
+	data->step_det_input_dev = input_allocate_device();
+	if (data->step_det_input_dev == NULL)
+		goto err_initialize_step_det_input_dev;
+	data->step_det_input_dev->name = "step_det_sensor";
+	input_set_capability(data->step_det_input_dev, EV_REL, REL_MISC);
+
+	iRet = input_register_device(data->step_det_input_dev);
+	if (iRet < 0) {
+		input_free_device(data->step_det_input_dev);
+		goto err_initialize_step_det_input_dev;
+	}
+	input_set_drvdata(data->step_det_input_dev, data);
+
+	data->step_cnt_input_dev = input_allocate_device();
+	if (data->step_cnt_input_dev == NULL)
+		goto err_initialize_step_cnt_input_dev;
+	data->step_cnt_input_dev->name = "step_cnt_sensor";
+	input_set_capability(data->step_cnt_input_dev, EV_REL, REL_MISC);
+
+	iRet = input_register_device(data->step_cnt_input_dev);
+	if (iRet < 0) {
+		input_free_device(data->step_cnt_input_dev);
+		goto err_initialize_step_cnt_input_dev;
+	}
+	input_set_drvdata(data->step_cnt_input_dev, data);
+#endif
 
 	return SUCCESS;
 
-iRet_gesture_input_unreg_device:
-	input_unregister_device(temp_humi_input_dev);
-iRet_tmep_humi_input_unreg_device:
-	input_unregister_device(prox_input_dev);
-iRet_proximity_input_unreg_device:
-	input_unregister_device(light_input_dev);
-iRet_light_input_unreg_device:
-	input_unregister_device(pressure_input_dev);
-iRet_pressure_input_unreg_device:
-	input_unregister_device(gyro_input_dev);
-iRet_gyro_input_unreg_device:
-	input_unregister_device(acc_input_dev);
-	return ERROR;
-iRet_acc_input_unreg_device:
-	pr_err("[SSP]: %s - could not register input device\n", __func__);
-	input_free_device(gesture_input_dev);
-iRet_gesture_input_free_device:
-	input_free_device(temp_humi_input_dev);
-iRet_temp_humidity_input_free_device:
-	input_free_device(prox_input_dev);
-iRet_proximity_input_free_device:
-	input_free_device(light_input_dev);
-iRet_light_input_free_device:
-	input_free_device(pressure_input_dev);
-iRet_pressure_input_free_device:
-	input_free_device(gyro_input_dev);
-iRet_gyro_input_free_device:
-	input_free_device(acc_input_dev);
-iRet_acc_input_free_device:
-	pr_err("[SSP]: %s - could not allocate input device\n", __func__);
+#ifdef FEATURE_STEP_SENSOR
+err_initialize_step_cnt_input_dev:
+	pr_err("[SSP]: %s - could not allocate step counter input device\n", __func__);
+	input_unregister_device(data->step_det_input_dev);
+err_initialize_step_det_input_dev:
+	pr_err("[SSP]: %s - could not allocate step detector input device\n", __func__);
+	input_unregister_device(data->sig_motion_input_dev);
+#endif
+err_initialize_sig_motion_input_dev:
+	pr_err("[SSP]: %s - could not allocate sig motion input device\n", __func__);
+	input_unregister_device(data->gesture_input_dev);
+err_initialize_gesture_input_dev:
+	pr_err("[SSP]: %s - could not allocate gesture input device\n", __func__);
+	input_unregister_device(data->temp_humi_input_dev);
+err_initialize_temp_humi_input_dev:
+	pr_err("[SSP]: %s - could not allocate temp_humi input device\n", __func__);
+	input_unregister_device(data->prox_input_dev);
+err_initialize_proximity_input_dev:
+	pr_err("[SSP]: %s - could not allocate proximity input device\n", __func__);
+	input_unregister_device(data->light_input_dev);
+err_initialize_light_input_dev:
+	pr_err("[SSP]: %s - could not allocate light input device\n", __func__);
+	input_unregister_device(data->pressure_input_dev);
+err_initialize_pressure_input_dev:
+	pr_err("[SSP]: %s - could not allocate pressure input device\n", __func__);
+	input_unregister_device(data->gyro_input_dev);
+err_initialize_gyro_input_dev:
+	pr_err("[SSP]: %s - could not allocate gyro input device\n", __func__);
+	input_unregister_device(data->acc_input_dev);
+err_initialize_acc_input_dev:
+	pr_err("[SSP]: %s - could not allocate acc input device\n", __func__);
 	return ERROR;
 }
 
@@ -541,4 +567,9 @@ void remove_input_dev(struct ssp_data *data)
 	input_unregister_device(data->light_input_dev);
 	input_unregister_device(data->prox_input_dev);
 	input_unregister_device(data->temp_humi_input_dev);
+	input_unregister_device(data->sig_motion_input_dev);
+#ifdef FEATURE_STEP_SENSOR
+	input_unregister_device(data->step_det_input_dev);
+	input_unregister_device(data->step_cnt_input_dev);
+#endif
 }

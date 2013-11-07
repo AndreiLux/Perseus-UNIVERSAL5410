@@ -611,8 +611,11 @@ rx_use_cpu:
 
 			if (uerstat & S3C2410_UERSTAT_FRAME)
 				port->icount.frame++;
-			if (uerstat & S3C2410_UERSTAT_OVERRUN)
+			if (uerstat & S3C2410_UERSTAT_OVERRUN) {
 				port->icount.overrun++;
+				pr_err("%s: port %d overrun --- count=%d\n", 
+					__func__, port->line, port->icount.overrun);
+			}
 
 			uerstat &= port->read_status_mask;
 
@@ -866,6 +869,8 @@ static void s3c24xx_serial_shutdown(struct uart_port *port)
 	if (ourport->tx_claimed) {
 		if (!s3c24xx_serial_has_interrupt_mask(port))
 			free_irq(ourport->tx_irq, ourport);
+    	else
+        	free_irq(port->irq, ourport);
 		tx_enabled(port) = 0;
 		ourport->tx_claimed = 0;
 

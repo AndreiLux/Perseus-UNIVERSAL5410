@@ -270,8 +270,19 @@ static int sec_bat_get_cable_from_extended_cable_type(
 				cable_type = cable_main;
 			}
 			break;
+		case ONLINE_SUB_TYPE_SMART_OTG:
+			cable_type = POWER_SUPPLY_TYPE_USB;
+			charge_current_max = 1000;
+			charge_current = 1000;
+			break;
+		case ONLINE_SUB_TYPE_SMART_NOTG:
+			cable_type = POWER_SUPPLY_TYPE_MAINS;
+			charge_current_max = 1900;
+			charge_current = 1600;
+			break;
 		default:
 			cable_type = cable_main;
+			charge_current_max = 0;
 			break;
 		}
 		break;

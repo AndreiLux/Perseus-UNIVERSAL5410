@@ -27,9 +27,9 @@ config PVR_SGX_DVFS
 	help
 	  This enables DVFS for SGX.
 
-config PVR_SGX_ACTIVE_POWER_MANAGEMENT
-	bool "Enables Active Power Management for SGX"
+config PVR_SGX_FENCE_SYNC
+	bool "Enables Android Native fence sync for SGX"
 	depends on PVR_SGX
-	default y
+	default n
 	help
-	  This enables active power management for SGX.
+	  This enables fence sync for SGX.

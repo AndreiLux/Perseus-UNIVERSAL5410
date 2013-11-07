@@ -135,7 +135,6 @@ module_param_named(qos_int_freq, INT_QOS_FREQ, uint, S_IWUSR | S_IRUGO);
 #define TSP_NEEDTO_REBOOT	(-ECONNREFUSED)
 #define MAX_TSP_REBOOT		3
 
-
 static int synaptics_rmi4_i2c_read(struct synaptics_rmi4_data *rmi4_data,
 		unsigned short addr, unsigned char *data,
 		unsigned short length);
@@ -1087,6 +1086,77 @@ exit:
 	return retval;
 }
 
+#ifdef TSP_PATTERN_TRACKING_METHOD
+static void clear_tcount(struct synaptics_rmi4_data *rmi4_data)
+{
+	struct pattern_tracking *pattern_data = &(rmi4_data->pattern_data);
+
+	memset(pattern_data->tcount_finger, 0x00, sizeof(pattern_data->tcount_finger));
+	memset(pattern_data->touchbx, 0x00, sizeof(pattern_data->touchbx));
+	memset(pattern_data->touchby, 0x00, sizeof(pattern_data->touchby));
+}
+
+static bool diff_two_point(int x, int y, int oldx, int oldy)
+{
+	int diffx, diffy;
+	int distance;
+
+	diffx = x - oldx;
+	diffy = y - oldy;
+	distance = abs(diffx) + abs(diffy);
+
+	if (distance < TSP_PT_PATTERN_TRACKING_DISTANCE)
+		return true;
+
+	return false;
+}
+
+static bool IsEdgeArea(int x, int y)
+{
+	if ((x <= TSP_PT_MIN_X_EDGE) || (x >= TSP_PT_MAX_X_EDGE)
+		|| (y <= TSP_PT_MIN_Y_EDGE) || (y >= TSP_PT_MAX_Y_EDGE))
+		return true;
+
+	return false;
+}
+
+
+/* To do forced calibration when ghost touch occured at the same point
+ for several second.   Xtopher */
+static bool tsp_pattern_tracking(struct synaptics_rmi4_data *rmi4_data,
+	int fingerindex, int x, int y, bool movecheck)
+{
+	int max_ghosttouch_th = TSP_PT_MAX_GHOSTTOUCH_COUNT;
+	struct pattern_tracking *pattern_data = &(rmi4_data->pattern_data);
+
+#ifdef PATTERN_TRACKING_FOR_FULLSCREEN
+	if (!IsEdgeArea(x, y)) {
+		if (movecheck)
+			return false;
+		max_ghosttouch_th = TSP_PT_MAX_GHOSTTOUCH_COUNT * 2;
+	}
+#else
+	if (!IsEdgeArea(x, y))
+		return false;
+#endif
+
+	if (diff_two_point(x, y, pattern_data->touchbx[fingerindex], pattern_data->touchby[fingerindex]))
+		pattern_data->tcount_finger[fingerindex]++;
+	else
+		pattern_data->tcount_finger[fingerindex] = 0;
+
+	pattern_data->touchbx[fingerindex] = x;
+	pattern_data->touchby[fingerindex] = y;
+
+	if (pattern_data->tcount_finger[fingerindex] >= max_ghosttouch_th) {
+		clear_tcount(rmi4_data);
+		return true;
+	}
+
+	return false;
+}
+#endif
+
  /**
  * synaptics_rmi4_f11_abs_report()
  *
@@ -1265,6 +1335,11 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		finger_data = data + finger;
 		finger_status = finger_data->object_type_and_status;
 
+		if (finger_status) {
+			if ((finger_data->wx == 0) && (finger_data->wy == 0))
+				continue;
+		}
+
 		/*
 		 * Each 3-bit finger status field represents the following:
 		 * 000 = finger not present
@@ -1345,6 +1420,16 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #endif
 
 			if (!rmi4_data->finger[finger].state) {
+#ifdef TSP_PATTERN_TRACKING_METHOD
+				/* Check hopping on almost fixed point */
+				if (tsp_pattern_tracking(rmi4_data, finger, x, y, false)) {
+					dev_err(&rmi4_data->i2c_client->dev, "Sunflower-Hopping (Pattern Tracking)\n");
+					cancel_delayed_work(&rmi4_data->reboot_work);
+					schedule_delayed_work(&rmi4_data->reboot_work,
+						msecs_to_jiffies(TSP_PT_REBOOT_PENDING_TIME * 6)); /* 300msec*/
+					return 0;
+			}
+#endif
 #ifdef TSP_BOOSTER
 				booster_status = true;
 #endif
@@ -1357,29 +1442,35 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #endif
 			} else {
 				rmi4_data->finger[finger].mcount++;
+#ifdef TSP_PATTERN_TRACKING_METHOD
+				/* Check staying finger at one point */
+				if ((rmi4_data->finger[finger].mcount % TSP_PT_MOVE_COUNT_TH) == 0) {
+					if (tsp_pattern_tracking(rmi4_data, finger, x, y, true)) {
+						dev_err(&rmi4_data->i2c_client->dev, "Sunflower-Fixed (Pattern Tracking)\n");
+						cancel_delayed_work(&rmi4_data->reboot_work);
+						schedule_delayed_work(&rmi4_data->reboot_work,
+							msecs_to_jiffies(TSP_PT_REBOOT_PENDING_TIME * 6)); /* 300msec*/
+						return 0;
+					}
+				}
+#endif
 			}
 			touch_count++;
-		}
 
-		if (rmi4_data->finger[finger].state && !finger_status) {
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-			/* TODO : Remove version information when H/W dose not changed */
-			dev_info(&rmi4_data->i2c_client->dev, "[%d][R] 0x%02x M[%d], Ver[%02X%02X%02X%02X]\n",
-				finger, finger_status, rmi4_data->finger[finger].mcount,
-				rmi4_data->ic_revision_of_ic, rmi4_data->panel_revision,
-				rmi4_data->fw_version_of_ic, rmi4_data->glove_mode_enables);
-#else
-			dev_info(&rmi4_data->i2c_client->dev, "[%d][R] 0x%02x M[%d], Ver[%02X%02X%02X%02X]\n",
-				finger, finger_status, rmi4_data->finger[finger].mcount,
-				rmi4_data->ic_revision_of_ic, rmi4_data->panel_revision,
-				rmi4_data->fw_version_of_ic, rmi4_data->glove_mode_enables);
-#endif
-			rmi4_data->finger[finger].mcount = 0;
+		} else {
+			if (rmi4_data->finger[finger].state) {
+				dev_info(&rmi4_data->i2c_client->dev, "[%d][R] 0x%02x M[%d], Ver[%02X%02X%02X %02X%02X]\n",
+					finger, finger_status, rmi4_data->finger[finger].mcount,
+					rmi4_data->ic_revision_of_ic, rmi4_data->panel_revision,
+					rmi4_data->fw_version_of_ic, rmi4_data->glove_mode_enables,
+					rmi4_data->ddi_type);
+
+				rmi4_data->finger[finger].mcount = 0;
+			}
 		}
 
 		rmi4_data->finger[finger].state = finger_status;
 	}
-
 
 	if (touch_count == 0) {
 		/* Clear BTN_TOUCH when All touch are released  */
@@ -2778,7 +2869,6 @@ static int synaptics_rmi4_query_device(struct synaptics_rmi4_data *rmi4_data)
 	unsigned char f01_query[F01_STD_QUERY_LEN];
 	unsigned short pdt_entry_addr;
 	unsigned short intr_addr;
-	struct synaptics_rmi4_f01_device_status status;
 	struct synaptics_rmi4_fn_desc rmi_fd;
 	struct synaptics_rmi4_fn *fhandler;
 	struct synaptics_rmi4_device_info *rmi;
@@ -3263,6 +3353,12 @@ static int synaptics_rmi4_reinit_device(struct synaptics_rmi4_data *rmi4_data)
 			 * During Factory process touch panel can be changed manually.
 			 */
 			if (fhandler->fn_number == SYNAPTICS_RMI4_F34) {
+				/* Read OLED ID pin, During Factory process touch panel can be changed manually. */
+				const struct synaptics_rmi4_platform_data *pdata = rmi4_data->board;
+
+				if (pdata->get_ddi_type)
+					rmi4_data->ddi_type = pdata->get_ddi_type();
+
 				synaptics_rmi4_open_lcd_ldi(rmi4_data);
 				retval = synaptics_rmi4_f34_read_version(rmi4_data, fhandler);
 				if (retval < 0)
@@ -3307,7 +3403,7 @@ static int synaptics_rmi4_reinit_device(struct synaptics_rmi4_data *rmi4_data)
 	return 0;
 }
 
-static void synaptics_rmi4_release_all_finger(
+void synaptics_rmi4_release_all_finger(
 	struct synaptics_rmi4_data *rmi4_data)
 {
 	int ii;
@@ -3317,6 +3413,16 @@ static void synaptics_rmi4_release_all_finger(
 		input_mt_slot(rmi4_data->input_dev, ii);
 		input_mt_report_slot_state(rmi4_data->input_dev,
 				MT_TOOL_FINGER, 0);
+
+		if (rmi4_data->finger[ii].state)
+			dev_info(&rmi4_data->i2c_client->dev, "[%d][R] 0x%02x M[%d], Ver[%02X%02X%02X %02X%02X]\n",
+				ii, rmi4_data->finger[ii].state, rmi4_data->finger[ii].mcount,
+				rmi4_data->ic_revision_of_ic, rmi4_data->panel_revision,
+				rmi4_data->fw_version_of_ic, rmi4_data->glove_mode_enables,
+				rmi4_data->ddi_type);
+
+		rmi4_data->finger[ii].state = 0;
+		rmi4_data->finger[ii].mcount = 0;
 	}
 #else
 	input_mt_sync(rmi4_data->input_dev);
@@ -3396,6 +3502,31 @@ out:
 
 	return 0;
 }
+
+#ifdef TSP_PATTERN_TRACKING_METHOD
+static void synaptics_rmi4_reboot_work(struct work_struct *work)
+{
+	int retval;
+	struct synaptics_rmi4_data *rmi4_data =
+			container_of(work, struct synaptics_rmi4_data,
+			reboot_work.work);
+
+	dev_err(&rmi4_data->i2c_client->dev, "%s: Tsp Reboot(%d) by pattern tracking\n",
+			__func__, rmi4_data->pattern_data.ghosttouchcount++);
+
+	mutex_lock(&rmi4_data->rmi4_device_mutex);
+
+	rmi4_data->pattern_data.is_working = true;
+	retval = synaptics_rmi4_reset_device(rmi4_data);
+	if (retval < 0) {
+		dev_err(&rmi4_data->i2c_client->dev, "%s: Failed to issue reset command, error = %d\n",
+				__func__, retval);
+	}
+	rmi4_data->pattern_data.is_working = false;
+
+	mutex_unlock(&rmi4_data->rmi4_device_mutex);
+}
+#endif
 
 #ifdef PROXIMITY
 static void synaptics_rmi4_f51_finger_timer(unsigned long data)
@@ -3619,9 +3750,18 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 #ifdef USE_CUSTOM_REZERO
 	INIT_DELAYED_WORK(&rmi4_data->rezero_work, synaptics_rmi4_rezero_work);
 #endif
-
+#ifdef TSP_PATTERN_TRACKING_METHOD
+	INIT_DELAYED_WORK(&rmi4_data->reboot_work, synaptics_rmi4_reboot_work);
+#endif
 	i2c_set_clientdata(client, rmi4_data);
 
+	if (!platform_data->get_ddi_type) {
+		dev_err(&client->dev, "%s: Do not support getting DDI Type\n", __func__);
+	} else {
+		rmi4_data->ddi_type = platform_data->get_ddi_type();
+		dev_info(&client->dev, "%s: DDI Type is %s[%d]\n",
+			__func__, rmi4_data->ddi_type ? "MAGNA" : "SDC", rmi4_data->ddi_type);
+	}
 
 err_tsp_reboot:
 	platform_data->power(true);
@@ -3856,6 +3996,11 @@ static int synaptics_rmi4_stop_device(struct synaptics_rmi4_data *rmi4_data)
 	const struct synaptics_rmi4_platform_data *platform_data =
 			rmi4_data->i2c_client->dev.platform_data;
 
+#ifdef SECURE_TSP
+	if (rmi4_data->secure_mode_status)
+		return 0;
+#endif
+
 	mutex_lock(&rmi4_data->rmi4_device_mutex);
 
 	if (rmi4_data->touch_stopped) {
@@ -3979,6 +4124,10 @@ static void synaptics_rmi4_input_close(struct input_dev *dev)
 #ifdef USE_OPEN_DWORK
 	cancel_delayed_work(&rmi4_data->open_work);
 #endif
+#ifdef TSP_PATTERN_TRACKING_METHOD
+	cancel_delayed_work(&rmi4_data->reboot_work);
+#endif
+
 	synaptics_rmi4_stop_device(rmi4_data);
 }
 #endif

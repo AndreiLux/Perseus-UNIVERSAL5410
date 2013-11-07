@@ -769,10 +769,21 @@ static int touchkey_firmware_version_check(struct touchkey_i2c *tkey_i2c)
 
 	ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 6);
 	if (ret < 0) {
+		dev_err(&tkey_i2c->client->dev,	"i2c read fail. firm update retry 1.\n");
+		if(ISSP_main(tkey_i2c) == 0) {
+			ret = i2c_touchkey_read(tkey_i2c->client, KEYCODE_REG, data, 6);
+			if (ret < 0) {
 		dev_err(&tkey_i2c->client->dev,	"i2c read fail. do not excute firm update.\n");
 		data[1] = 0;
 		data[2] = 0;
 		return ret;
+			}else{
+				dev_dbg(&tkey_i2c->client->dev, "pass firm update.\n");
+			}
+		}else{
+			dev_err(&tkey_i2c->client->dev, "fail firm update.\n");
+			return ret;
+		}
 	}
 	dev_info(&tkey_i2c->client->dev, "%s F/W version: 0x%x, Module version:0x%x\n",
 			__func__, data[1], data[2]);
@@ -807,8 +818,12 @@ static int touchkey_firmware_update(struct touchkey_i2c *tkey_i2c)
 		return TK_UPDATE_FAIL;
 	}
 
+#ifdef TKEY_FW_FORCEUPDATE
+	if (tkey_i2c->firmware_ver != TK_FIRMWARE_VER_65 ) {
+#else
 	if (tkey_i2c->firmware_ver < TK_FIRMWARE_VER_65 && \
 			tkey_i2c->firmware_id == TK_MODULE_20065) {
+#endif
 		int retry = 3;
 		dev_info(&tkey_i2c->client->dev, "Firmware auto update excute\n");
 
@@ -1679,6 +1694,9 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 	struct input_dev *input_dev;
 	int i;
 	int ret = 0;
+#ifdef TKEY_FW_FORCEUPDATE
+	int firmup_retry = 0;
+#endif
 
 	if (pdata == NULL) {
 		dev_err(&client->dev, "%s: no pdata\n", __func__);
@@ -1770,6 +1788,13 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 		}
 	}
 
+#ifdef TKEY_FW_FORCEUPDATE
+	dev_err(&client->dev, "JA LCD type Print : 0x%06X\n", lcdtype);
+	if (lcdtype == 0) {
+		dev_err(&client->dev, "Device wasn't connected to board\n");
+		goto err_i2c_check;
+	}
+#else
 #if defined(TK_USE_LCDTYPE_CHECK)
 	dev_err(&client->dev, "JA LCD type Print : 0x%06X\n", lcdtype);
 	if (lcdtype == 0) {
@@ -1782,6 +1807,7 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 		dev_err(&client->dev, "i2c_check failed\n");
 		goto err_i2c_check;
 	}
+#endif
 #endif
 
 #ifdef TOUCHKEY_BOOSTER
@@ -1811,12 +1837,26 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 	tkey_i2c->pdata->led_power_on(1);
 
 #if defined(TK_HAS_FIRMWARE_UPDATE)
+tkey_firmupdate_retry_byreboot:
 	ret = touchkey_firmware_update(tkey_i2c);
 	if (ret < 0) {
 		dev_err(&client->dev, "Failed firmware updating process (%d)\n",
 			ret);
+		#ifndef TKEY_FW_FORCEUPDATE
 		goto err_firmware_update;
+		#endif
 	}
+#ifdef TKEY_FW_FORCEUPDATE
+	if(tkey_i2c->firmware_ver != TK_FIRMWARE_VER_65){
+		tkey_i2c->pdata->power_on(0);
+		msleep(70);
+		tkey_i2c->pdata->power_on(1);
+		msleep(50);
+		firmup_retry++;
+		if(firmup_retry < 4) goto tkey_firmupdate_retry_byreboot;
+		else goto err_firmware_update;
+	}
+#endif
 #endif
 
 #if defined(TK_INFORM_CHARGER)

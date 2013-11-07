@@ -331,7 +331,6 @@ static struct sysmmu_version_map sysmmu_version5410[] __initdata = {
 };
 
 static struct sysmmu_tlbinv_map sysmmu_tlbinv5410[] __initdata = {
-	SYSMMU_TLBINVENTRY_MAPPING(fimd1, true),
 	SYSMMU_TLBINVENTRY_MAPPING(tv, true),
 	SYSMMU_TLBINVENTRY_MAPPING(camif0, true),
 	SYSMMU_TLBINVENTRY_MAPPING(camif1, true),

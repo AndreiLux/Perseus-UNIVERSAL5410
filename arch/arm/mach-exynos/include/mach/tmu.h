@@ -34,6 +34,9 @@ enum {
 	TMU_109,
 	TMU_110,
 	TMU_111, // for detect thermal runaway caused by fimc
+	MEM_TH_LV1,
+	MEM_TH_LV2,
+	MEM_TH_LV3,
 };
 
 struct temperature_params {

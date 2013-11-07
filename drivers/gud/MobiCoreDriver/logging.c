@@ -319,7 +319,7 @@ long mobicore_log_setup(void)
 
 	set_task_state(log_thread, TASK_INTERRUPTIBLE);
 
-	MCDRV_DBG(mcd, "fc_log Logger version %u\n", log_buf->version);
+	MCDRV_DBG(mcd, "fc_log Logger version %u", log_buf->version);
 	return 0;
 
 err_stop_kthread:
