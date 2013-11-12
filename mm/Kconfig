@@ -493,3 +493,7 @@ config MEM_SOFT_DIRTY
 	  it can be cleared by hands.
 
 	  See Documentation/vm/soft-dirty.txt for more details.
+	  
+config FADV_NOACTIVE
+	bool "fadvise noactive option support"
+	default n

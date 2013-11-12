@@ -137,7 +137,7 @@ static unsigned short fault_reg_offset[SYSMMU_FAULTS_NUM] = {
 	REG_PAGE_FAULT_ADDR,
 	REG_AR_FAULT_ADDR,
 	REG_AW_FAULT_ADDR,
-	REG_DEFAULT_SLAVE_ADDR,
+	REG_PAGE_FAULT_ADDR,
 	REG_AR_FAULT_ADDR,
 	REG_AR_FAULT_ADDR,
 	REG_AW_FAULT_ADDR,
@@ -510,32 +510,192 @@ void exynos_sysmmu_set_fault_handler(struct device *dev,
 	spin_unlock_irqrestore(&owner->lock, flags);
 }
 
-static int default_fault_handler(struct device *dev, const char *mmuname,
-					enum exynos_sysmmu_inttype itype,
-					unsigned long pgtable_base,
-					unsigned long fault_addr)
+static unsigned int pgsizes[4]  = {SZ_64K, SZ_4K, SZ_1M, SZ_16M};
+static unsigned int v3pb_num[6][6] = { /* [pb num - 1][lmm] */
+	{0, 0, 0, 0, 0, 0},
+	{0, 0, 0, 0, 0, 0},
+	{3, 2, 0, 0, 0, 0},
+	{4, 3, 2, 1, 0, 0},
+	{0, 0, 0, 0, 0, 0},
+	{6, 5, 4, 3, 3, 2},
+};
+
+static void sysmmu_dump_tlb(void __iomem *sfrbase,
+			    unsigned int maj, unsigned int min)
 {
-	unsigned long *ent;
+	unsigned int va = 0;
+	unsigned int data;
+	unsigned int size;
+	unsigned int cur_va = 0;
+	unsigned int num_tlb = __raw_readl(sfrbase + 0x34) & 0x7F;
 
-	if ((itype >= SYSMMU_FAULTS_NUM) || (itype < SYSMMU_PAGEFAULT))
-		itype = SYSMMU_FAULT_UNKNOWN;
+	pr_crit("Dumping TLB of System MMU %d.%d (%d entries)\n",
+		maj, min, num_tlb);
+	pr_crit("MMU_CFG %#010x, MMU_STATUS %#010x\n",
+			__raw_readl(sfrbase + REG_MMU_CFG),
+			__raw_readl(sfrbase + REG_MMU_STATUS));
+	pr_crit("INT_STATUS %#010x, VERSION %#010x\n",
+			__raw_readl(sfrbase + REG_INT_STATUS),
+			__raw_readl(sfrbase + REG_MMU_VERSION));
 
-	pr_err("%s occured at 0x%lx by '%s'(Page table base: 0x%lx)\n",
-		sysmmu_fault_name[itype], fault_addr, mmuname, pgtable_base);
+	while (va < 0xFFFFF000) {
+		__raw_writel(va | 1, sfrbase + 0x38);
+		data = __raw_readl(sfrbase + 0x3C);
+		if (data & 1) {
+			size = pgsizes[(data >> 5) & 3];
+			if ((va & ~(size - 1)) != cur_va) {
+				cur_va = va;
+				pr_crit("TLB[%#010x] = %#x\n",
+					cur_va, data);
+			}
+		}
 
-	ent = section_entry(__va(pgtable_base), fault_addr);
-	pr_err("\tLv1 entry: 0x%lx\n", *ent);
-
-	if (lv1ent_page(ent)) {
-		ent = page_entry(ent, fault_addr);
-		pr_err("\t Lv2 entry: 0x%lx\n", *ent);
+		va += SZ_4K;
 	}
 
-	pr_err("Generating Kernel OOPS... because it is unrecoverable.\n");
+	if (min < 2) {
+		unsigned int cfg;
+		unsigned int idx;
+		cfg = __raw_readl(sfrbase + 0x4);
+		pr_crit("MMU_CFG: %#010x\n", cfg);
+		if (((cfg >> 28) & 2) == 0) {
+			pr_crit("PB disabled!\n");
+			return;
+		}
 
-	BUG();
+		for (idx = 0; idx < 2; idx++) {
+			unsigned int jdx;
+			pr_crit(
+			"PB%d: SADDR %#010x, EADDR %#010x, BASE_VA %#010x\n",
+				idx,
+				__raw_readl(sfrbase + 0x4C + idx * 8),
+				__raw_readl(sfrbase + 0x50 + idx * 8),
+				__raw_readl(sfrbase + 0x5C + idx * 4));
+			for (jdx = 0; jdx < 16; jdx++) {
+				__raw_writel((jdx << 4) | 1,
+						sfrbase + 0x68 + idx * 8);
+				pr_crit("PB%d[%d]: DATA %#010x\n", idx, jdx,
+					__raw_readl(sfrbase + 0x70 + idx * 8));
+			}
+		}
+		return;
+	}
 
-	return 0;
+	if (min == 2) {
+		unsigned int cfg;
+		unsigned int idx;
+		cfg = __raw_readl(sfrbase + 0x4);
+		pr_crit("MMU_CFG: %#010x\n", cfg);
+		if (((cfg >> 16) & 0x2F) == 0) {
+			pr_crit("PB disabled!\n");
+			return;
+		}
+
+		for (idx = 0; idx < 3; idx++) {
+			unsigned int jdx;
+			pr_crit(
+			"PB%d: SADDR %#010x, EADDR %#010x, BASE_VA %#010x\n",
+				idx,
+				__raw_readl(sfrbase + 0x70 + idx * 8),
+				__raw_readl(sfrbase + 0x74 + idx * 8),
+				__raw_readl(sfrbase + 0x88 + idx * 4));
+			if (idx < 2) {
+				for (jdx = 0; jdx < 16; jdx++) {
+					__raw_writel((jdx << 4) | 1,
+						sfrbase + 0x98 + idx * 8);
+					pr_crit("PB%d[%d]: DATA %#010x\n",
+					idx, jdx,
+					__raw_readl(sfrbase + 0x9c + idx * 8));
+				}
+			} else {
+				for (jdx = 0; jdx < 32; jdx++) {
+					__raw_writel((jdx << 4) | 1,
+						sfrbase + 0xa8 + idx * 8);
+					pr_crit("PB%d[%d]: DATA %#010x\n",
+						idx, jdx,
+					__raw_readl(sfrbase + 0xac + idx * 8));
+				}
+			}
+		}
+		return;
+	}
+
+	if (min == 3) {
+		unsigned int idx;
+		unsigned int pbnum;
+		unsigned int pblmm;
+
+		pbnum = __raw_readl(sfrbase + 0x400);
+		pblmm = __raw_readl(sfrbase + 0x404);
+		pr_crit("PB_INFO: %#010x, PB_LMM: %#010x\n", pbnum, pblmm);
+		pbnum = v3pb_num[pbnum][pblmm];
+
+		for (idx = 0; idx < pbnum; idx++) {
+			__raw_writel(idx, sfrbase + 0x408);
+			pr_crit(
+			"PB[%d] = CFG: %#010x, START: %#010x, END: %#010x\n",
+					idx, __raw_readl(sfrbase + 0x40C),
+					__raw_readl(sfrbase + 0x410),
+					__raw_readl(sfrbase + 0x414));
+			pblmm = __raw_readl(sfrbase + 0x418);
+			__raw_writel((1 << 8) | idx, sfrbase + 0x408);
+			pr_crit("PB[%d] = BASE0: %#010x, BASE1: %#010x\n",
+				idx, pblmm, __raw_readl(sfrbase + 0x418));
+
+		}
+	}
+}
+
+
+static enum exynos_sysmmu_inttype find_fault_information(
+			struct sysmmu_drvdata *drvdata, int idx,
+			unsigned long *fault_addr)
+{
+	unsigned int maj, min;
+	unsigned long base = 0;
+	unsigned int itype;
+	unsigned int info = 0;
+	unsigned long *ent;
+
+	itype = __ffs(__raw_readl(drvdata->sfrbases[idx] + REG_INT_STATUS));
+	if (WARN_ON(!((itype >= 0) && (itype < SYSMMU_FAULT_UNKNOWN)))) {
+		pr_crit("Fault is not occurred by this System MMU!\n");
+		pr_crit("Please check if IRQ or register base address\n");
+		return SYSMMU_FAULT_UNKNOWN;
+	}
+
+	maj = __sysmmu_version(drvdata, idx, &min);
+	if ((maj == 3) && (min == 3)) {
+		*fault_addr = __raw_readl(
+				drvdata->sfrbases[idx] + REG_PAGE_FAULT_ADDR);
+		info = __raw_readl(drvdata->sfrbases[idx] + 0x4C);
+	} else {
+		*fault_addr = __raw_readl(drvdata->sfrbases[idx] +
+					  fault_reg_offset[itype]);
+	}
+
+	base = __raw_readl(drvdata->sfrbases[idx] + REG_PT_BASE_ADDR);
+	if (base != drvdata->pgtable) {
+		pr_crit("Page table must be %#010lx but %#010lx is specified\n",
+			drvdata->pgtable, base);
+		return itype;
+	}
+
+	pr_crit("%s occured at 0x%lx by '%s'(Page table base: 0x%lx)\n",
+		sysmmu_fault_name[itype], *fault_addr,
+		drvdata->dbgname, base);
+
+	ent = section_entry(__va(base), *fault_addr);
+	pr_crit("\tLv1 entry: 0x%lx\n", *ent);
+
+	if (lv1ent_page(ent)) {
+		ent = page_entry(ent, *fault_addr);
+		pr_crit("\t Lv2 entry: 0x%lx\n", *ent);
+	}
+
+	sysmmu_dump_tlb(drvdata->sfrbases[idx], maj, min);
+
+	return (enum exynos_sysmmu_inttype)itype;
 }
 
 static irqreturn_t exynos_sysmmu_irq(int irq, void *dev_id)
@@ -570,14 +730,7 @@ static irqreturn_t exynos_sysmmu_irq(int irq, void *dev_id)
 	if (i == drvdata->nsfrs) {
 		itype = SYSMMU_FAULT_UNKNOWN;
 	} else {
-		itype = (enum exynos_sysmmu_inttype)
-			__ffs(__raw_readl(
-					drvdata->sfrbases[i] + REG_INT_STATUS));
-		if (WARN_ON(!((itype >= 0) && (itype < SYSMMU_FAULT_UNKNOWN))))
-			itype = SYSMMU_FAULT_UNKNOWN;
-		else
-			addr = __raw_readl(
-				drvdata->sfrbases[i] + fault_reg_offset[itype]);
+		itype = find_fault_information(drvdata, i, &addr);
 	}
 
 	if (drvdata->domain) /* owner is always set if drvdata->domain exists */
@@ -585,15 +738,13 @@ static irqreturn_t exynos_sysmmu_irq(int irq, void *dev_id)
 					owner->dev, addr, itype);
 
 	if ((ret == -ENOSYS) && drvdata->fault_handler) {
-		unsigned long base = drvdata->pgtable;
-		if (itype != SYSMMU_FAULT_UNKNOWN)
-			base = __raw_readl(
-				drvdata->sfrbases[i] + REG_PT_BASE_ADDR);
 		ret = drvdata->fault_handler(
 					owner ? owner->dev : drvdata->sysmmu,
 					mmuname ? mmuname : drvdata->dbgname,
-					itype, base, addr);
+					itype, drvdata->pgtable, addr);
 	}
+
+	panic("Halted by System MMU Fault from %s!", drvdata->dbgname);
 
 	if (!ret && (itype != SYSMMU_FAULT_UNKNOWN))
 		__raw_writel(1 << itype, drvdata->sfrbases[i] + REG_INT_CLEAR);
@@ -1066,7 +1217,7 @@ static int __init exynos_sysmmu_probe(struct platform_device *pdev)
 		data->sysmmu = dev;
 		spin_lock_init(&data->lock);
 
-		__set_fault_handler(data, &default_fault_handler);
+//		__set_fault_handler(data, &default_fault_handler);
 
 		__create_debugfs_entry(data);
 

@@ -768,6 +768,12 @@ static INLINE IMG_VOID OSGetCurrentProcessNameKM(IMG_CHAR *pszName, IMG_UINT32 u
 
 #endif
 
+#if defined(__linux__) && defined(DEBUG)
+#define OSDumpStack dump_stack
+#else
+#define OSDumpStack()
+#endif
+
 #if defined (__cplusplus)
 }
 #endif

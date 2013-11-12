@@ -251,10 +251,15 @@ static irqreturn_t s3c2410wdt_irq(int irqno, void *param)
 
 #ifdef CONFIG_CPU_FREQ
 
+static int wdt_resume_complete;
+
 static int s3c2410wdt_cpufreq_transition(struct notifier_block *nb,
 					  unsigned long val, void *data)
 {
 	int ret;
+
+	if (!wdt_resume_complete)
+		goto done;
 
 	if (!s3c2410wdt_is_running())
 		goto done;
@@ -369,6 +374,10 @@ static int __devinit s3c2410wdt_probe(struct platform_device *pdev)
 		goto err_clk;
 	}
 
+#ifdef CONFIG_CPU_FREQ
+	wdt_resume_complete = 1;
+#endif
+
 	/* see if we can actually set the requested timer margin, and if
 	 * not, try the default value */
 
@@ -478,6 +487,9 @@ static int s3c2410wdt_suspend(struct platform_device *dev, pm_message_t state)
 	/* Note that WTCNT doesn't need to be saved. */
 	s3c2410wdt_stop(&s3c2410_wdd);
 
+#ifdef CONFIG_CPU_FREQ
+	wdt_resume_complete = 0;
+#endif
 	return 0;
 }
 
@@ -492,6 +504,9 @@ static int s3c2410wdt_resume(struct platform_device *dev)
 	pr_info("watchdog %sabled\n",
 		(wtcon_save & S3C2410_WTCON_ENABLE) ? "en" : "dis");
 
+#ifdef CONFIG_CPU_FREQ
+	wdt_resume_complete = 1;
+#endif
 	return 0;
 }
 

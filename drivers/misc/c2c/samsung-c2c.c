@@ -50,16 +50,41 @@
 
 static int c2c_set_sharedmem(enum c2c_shrdmem_size size, dma_addr_t addr);
 
+static inline void print_c2c_status(void)
+{
+	pr_err("[C2C] %s: addr 0x%08X, size %lu\n",
+		__func__, c2c_con.shdmem_addr, c2c_con.shdmem_byte_size);
+
+	pr_err("[C2C] %s: sclk %ld Hz\n",
+		__func__, clk_get_rate(c2c_con.c2c_sclk));
+	pr_err("[C2C] %s: aclk %ld Hz\n",
+		__func__, clk_get_rate(c2c_con.c2c_aclk));
+
+	pr_err("[C2C] %s: REG.PORT_CONFIG 0x%08X\n",
+		__func__, c2c_readl(EXYNOS_C2C_PORTCONFIG));
+	pr_err("[C2C] %s: REG.FCLK_FREQ   0x%08X\n",
+		__func__, c2c_readl(EXYNOS_C2C_FCLK_FREQ));
+	pr_err("[C2C] %s: REG.RX_MAX_FREQ 0x%08X\n",
+		__func__, c2c_readl(EXYNOS_C2C_RX_MAX_FREQ));
+	pr_err("[C2C] %s: REG.IRQ_EN_SET1 0x%08X\n",
+		__func__, c2c_readl(EXYNOS_C2C_IRQ_EN_SET1));
+}
+
+static u32 c2c_get_opp_clk(void)
+{
+	if (c2c_con.opp_mode == C2C_OPP100)
+		return c2c_con.clk_opp100;
+	else if (c2c_con.opp_mode == C2C_OPP50)
+		return c2c_con.clk_opp50;
+	else if (c2c_con.opp_mode == C2C_OPP25)
+		return c2c_con.clk_opp25;
+	else
+		return c2c_con.clk_opp50;
+}
+
 void c2c_reset_ops(void)
 {
-	u32 set_clk = 0;
-
-	if (c2c_con.opp_mode == C2C_OPP100)
-		set_clk = c2c_con.clk_opp100;
-	else if (c2c_con.opp_mode == C2C_OPP50)
-		set_clk = c2c_con.clk_opp50;
-	else if (c2c_con.opp_mode == C2C_OPP25)
-		set_clk = c2c_con.clk_opp25;
+	u32 set_clk = c2c_get_opp_clk();
 
 	clk_set_rate(c2c_con.c2c_sclk, (set_clk + 1) * MHZ);
 	c2c_set_func_clk(set_clk);
@@ -442,14 +467,7 @@ static void set_c2c_device(struct platform_device *pdev)
 	for (i = 0; i < 32; i++)
 		c2c_set_interrupt(i, C2C_INT_HIGH);
 
-	pr_err("[C2C] REG.PORT_CONFIG: 0x%08X\n",
-		c2c_readl(EXYNOS_C2C_PORTCONFIG));
-	pr_err("[C2C] REG.FCLK_FREQ  : 0x%08X\n",
-		c2c_readl(EXYNOS_C2C_FCLK_FREQ));
-	pr_err("[C2C] REG.RX_MAX_FREQ: 0x%08X\n",
-		c2c_readl(EXYNOS_C2C_RX_MAX_FREQ));
-	pr_err("[C2C] REG.IRQ_EN_SET1: 0x%08X\n",
-		c2c_readl(EXYNOS_C2C_IRQ_EN_SET1));
+	print_c2c_status();
 
 	c2c_set_clock_gating(C2C_SET);
 }
@@ -771,16 +789,26 @@ EXPORT_SYMBOL(c2c_suspend);
 
 int c2c_resume(void)
 {
+	u32 set_clk = c2c_get_opp_clk();
 	pr_info("[C2C] %s: +++ by %pf\n", __func__, __builtin_return_address(0));
+
 	writel((0x1 << 28), c2c_con.pmu_retention);
+
 	c2c_set_sharedmem(c2c_con.shdmem_byte_size, c2c_con.shdmem_addr);
 	c2c_set_memdone(C2C_SET);
+
 	c2c_set_clock_gating(C2C_CLEAR);
+
 	c2c_set_interrupt(C2C_GENIO_OPP_INT, C2C_INT_HIGH);
 	c2c_writel(c2c_con.retention_reg, EXYNOS_C2C_IRQ_EN_SET1);
 	c2c_writel(((c2c_con.rx_width << 4) | (c2c_con.tx_width)),
 			EXYNOS_C2C_PORTCONFIG);
+
+	c2c_writel(set_clk, EXYNOS_C2C_FCLK_FREQ);
+	c2c_writel(set_clk, EXYNOS_C2C_RX_MAX_FREQ);
+
 	c2c_set_clock_gating(C2C_SET);
+
 	udelay(100);
 	writel(0x0, c2c_con.c2c_ddrphy_dlllock);
 	udelay(100);

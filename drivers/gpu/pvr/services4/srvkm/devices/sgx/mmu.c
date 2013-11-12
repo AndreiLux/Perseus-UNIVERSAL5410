@@ -3132,7 +3132,7 @@ MMU_Alloc (MMU_HEAP *pMMUHeap,
 	IMG_BOOL bStatus;
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-		"MMU_Alloc: uSize=0x%x, flags=0x%x, align=0x%x",
+		"MMU_Alloc: uSize=0x%" SIZE_T_FMT_LEN "x, flags=0x%x, align=0x%x",
 		uSize, uFlags, uDevVAddrAlignment));
 
 	/*
@@ -3595,7 +3595,7 @@ MMU_MapScatter (MMU_HEAP *pMMUHeap,
 		DevVAddr.uiAddr += pMMUHeap->ui32DataPageSize;
 
 		PVR_DPF ((PVR_DBG_MESSAGE,
-				 "MMU_MapScatter: devVAddr=%x, SysAddr=" SYSPADDR_FMT ", size=0x%x/0x%x",
+				 "MMU_MapScatter: devVAddr=%x, SysAddr=" SYSPADDR_FMT ", size=0x%x/0x%" SIZE_T_FMT_LEN "x",
 				  DevVAddr.uiAddr, sSysAddr.uiAddr, uCount, uSize));
 	}
 
@@ -3642,7 +3642,7 @@ MMU_MapPages (MMU_HEAP *pMMUHeap,
 
 	PVR_ASSERT (pMMUHeap != IMG_NULL);
 
-	PVR_DPF ((PVR_DBG_MESSAGE, "MMU_MapPages: heap:%s, heap_id:%d devVAddr=%08X, SysPAddr=" SYSPADDR_FMT ", size=0x%x",
+	PVR_DPF ((PVR_DBG_MESSAGE, "MMU_MapPages: heap:%s, heap_id:%d devVAddr=%08X, SysPAddr=" SYSPADDR_FMT ", size=0x%" SIZE_T_FMT_LEN "x",
 								pMMUHeap->psDevArena->pszName,
 								pMMUHeap->psDevArena->ui32HeapID,
 								DevVAddr.uiAddr, 
@@ -3734,7 +3734,7 @@ MMU_MapPagesSparse (MMU_HEAP *pMMUHeap,
 
 	PVR_ASSERT (pMMUHeap != IMG_NULL);
 
-	PVR_DPF ((PVR_DBG_MESSAGE, "MMU_MapPagesSparse: heap:%s, heap_id:%d devVAddr=%08X, SysPAddr=" SYSPADDR_FMT ", VM space=0x%x, PHYS space=0x%x",
+	PVR_DPF ((PVR_DBG_MESSAGE, "MMU_MapPagesSparse: heap:%s, heap_id:%d devVAddr=%08X, SysPAddr=" SYSPADDR_FMT ", VM space=0x%" SIZE_T_FMT_LEN "x, PHYS space=0x%x",
 								pMMUHeap->psDevArena->pszName,
 								pMMUHeap->psDevArena->ui32HeapID,
 								DevVAddr.uiAddr, 
@@ -3833,7 +3833,7 @@ MMU_MapShadow (MMU_HEAP          *pMMUHeap,
 #endif
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			"MMU_MapShadow: DevVAddr:%08X, Bytes:0x%x, CPUVAddr:%p",
+			"MMU_MapShadow: DevVAddr:%08X, Bytes:0x%" SIZE_T_FMT_LEN "x, CPUVAddr:%p",
 			MapBaseDevVAddr.uiAddr,
 			uByteSize,
 			CpuVAddr));
@@ -3959,7 +3959,7 @@ MMU_MapShadowSparse (MMU_HEAP          *pMMUHeap,
 #endif
 
 	PVR_DPF ((PVR_DBG_MESSAGE,
-			"MMU_MapShadowSparse: DevVAddr:%08X, VM space:0x%x, CPUVAddr:%p PHYS space:0x%x",
+			"MMU_MapShadowSparse: DevVAddr:%08X, VM space:0x%" SIZE_T_FMT_LEN "x, CPUVAddr:%p PHYS space:0x%x",
 			MapBaseDevVAddr.uiAddr,
 			uiSizeVM,
 			CpuVAddr,

@@ -125,7 +125,9 @@ extern "C"
 		if (uSize != psInfo->uSize)
 		{
 			PVR_DPF((PVR_DBG_WARNING, 
-					"Pointer 0x%p : supplied size was different to stored size (0x%x != 0x%X) - referenced %s:%d - allocated %s:%d",
+					"Pointer 0x%p : supplied size was different to stored size (0x%" 
+					SIZE_T_FMT_LEN "X != 0x%" SIZE_T_FMT_LEN "X)"
+					 " - referenced %s:%d - allocated %s:%d",
 					 pvCpuVAddr, uSize, psInfo->uSize,
 					 pszFileName, uLine,
 					 psInfo->sFileName, psInfo->uLineNo));
@@ -136,8 +138,9 @@ extern "C"
 		if ((0x01234567 ^ psInfo->uSizeParityCheck) != psInfo->uSize)
 		{
 			PVR_DPF((PVR_DBG_WARNING, 
-					"Pointer 0x%p : stored size parity error (0x%X != 0x%X) \
-					  - referenced %s:%d - allocated %s:%d",
+					"Pointer 0x%p : stored size parity error (0x%"
+					SIZE_T_FMT_LEN "X != 0x%" SIZE_T_FMT_LEN "X)"
+					 " - referenced %s:%d - allocated %s:%d",
 					 pvCpuVAddr, psInfo->uSize, 0x01234567 ^ psInfo->uSizeParityCheck,
 					 pszFileName, uLine,
 					 psInfo->sFileName, psInfo->uLineNo));

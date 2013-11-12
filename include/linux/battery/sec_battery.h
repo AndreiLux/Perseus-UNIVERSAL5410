@@ -59,6 +59,7 @@ struct sec_battery_info {
 	int voltage_ocv;		/* open circuit voltage (mV) */
 	int current_now;		/* current (mA) */
 	int current_avg;		/* average current (mA) */
+	int current_max;		/* input current limit (mA) */
 	int current_adc;
 
 	unsigned int capacity;			/* SOC (%) */
@@ -223,4 +224,5 @@ enum {
 #endif
 };
 
+void charger_control_init(struct sec_battery_info *info);
 #endif /* __SEC_BATTERY_H */

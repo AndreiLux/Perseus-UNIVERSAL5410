@@ -14,7 +14,7 @@
  */
 #include "ssp.h"
 
-#define SSP_FIRMWARE_REVISION_08	13051400/* MCU L5 */
+#define SSP_FIRMWARE_REVISION_08	13092300/* MCU L5 */
 
 /* Bootload mode cmd */
 #define BL_FW_NAME				"ssp.fw"

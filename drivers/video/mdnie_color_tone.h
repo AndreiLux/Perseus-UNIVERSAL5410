@@ -3,6 +3,8 @@
 
 #include "mdnie.h"
 
+/* 2013.08.30 */
+
 static const unsigned short tune_scr_setting[9][3] = {
 	{0xff, 0xf7, 0xf8},
 	{0xff, 0xf9, 0xfe},
@@ -130,9 +132,9 @@ static unsigned short tune_negative[] = {
 	0x0077, 0xff00, /*SCR BrYr*/
 	0x0078, 0xff00, /*SCR BgYg*/
 	0x0079, 0x00ff, /*SCR BbYb*/
-	0x007a, 0xff00, /*SCR KrWr*/
-	0x007b, 0xff00, /*SCR KgWg*/
-	0x007c, 0xff00, /*SCR KbWb*/
+	0x007a, 0xff08, /*SCR KrWr*/
+	0x007b, 0xff08, /*SCR KgWg*/
+	0x007c, 0xff08, /*SCR KbWb*/
 	0x00ff, 0x0000, /*Mask Release*/
 	/*end*/
 	END_SEQ, 0x0000,

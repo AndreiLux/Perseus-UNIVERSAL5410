@@ -47,6 +47,7 @@
 #define RUNTIME	(1)
 
 #define LPA_NOISE
+#define USE_FORCED_IO_INIT
 
 struct i2s_dai {
 	/* Platform device for this DAI */
@@ -601,12 +602,47 @@ static int i2s_set_fmt(struct snd_soc_dai *dai,
 	return 0;
 }
 
+#ifdef USE_FORCED_IO_INIT
+static void i2s_io_init(struct i2s_dai *i2s)
+{
+	struct platform_device *pdev;
+	struct s3c_audio_pdata *i2s_pdata;
+	u32 con = readl(i2s->addr + I2SCON);
+
+	if (is_secondary(i2s))
+		i2s = i2s->pri_dai;
+
+	pdev = i2s->pdev;
+	i2s_pdata = pdev->dev.platform_data;
+
+	if (i2s_pdata->cfg_gpio && i2s_pdata->cfg_gpio(pdev))
+		dev_err(&pdev->dev, "Unable to configure gpio\n");
+
+	if (i2s->quirks & QUIRK_NEED_RSTCLR)
+		writel(con | CON_RSTCLR, i2s->addr + I2SCON);
+
+#ifdef LPA_NOISE
+	if (readl(i2s->audss_base + EXYNOS_CLKDIV_AUDSS_OFFSET) != 0xf13 ||
+		readl(i2s->audss_base + EXYNOS_CLKSRC_AUDSS_OFFSET) != 0x1) {
+		writel(0xf13, i2s->audss_base + EXYNOS_CLKDIV_AUDSS_OFFSET);
+		writel(0x01, i2s->audss_base + EXYNOS_CLKSRC_AUDSS_OFFSET);
+	}
+#endif
+	pr_info("%s: i2smod %x, i2scon %x\n",
+			__func__, readl(i2s->addr + I2SMOD),
+			readl(i2s->addr + I2SCON));
+}
+#endif
+
 static int i2s_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	struct i2s_dai *i2s = to_info(dai);
 	u32 mod = readl(i2s->addr + I2SMOD);
 
+#ifdef USE_FORCED_IO_INIT
+	i2s_io_init(i2s);
+#endif
 	if (!is_secondary(i2s))
 		mod &= ~(MOD_DC2_EN | MOD_DC1_EN);
 
@@ -641,7 +677,6 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 	else
 		mod &= ~MOD_BLCP_MASK;
 
-	if (is_manager(i2s))
 		mod &= ~MOD_BLC_MASK;
 
 	switch (params_format(params)) {
@@ -650,7 +685,7 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 			mod |= MOD_BLCS_8BIT;
 		else
 			mod |= MOD_BLCP_8BIT;
-		if (is_manager(i2s))
+
 			mod |= MOD_BLC_8BIT;
 		break;
 	case SNDRV_PCM_FORMAT_S16_LE:
@@ -658,7 +693,7 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 			mod |= MOD_BLCS_16BIT;
 		else
 			mod |= MOD_BLCP_16BIT;
-		if (is_manager(i2s))
+
 			mod |= MOD_BLC_16BIT;
 		break;
 	case SNDRV_PCM_FORMAT_S24_LE:
@@ -666,7 +701,7 @@ static int i2s_hw_params(struct snd_pcm_substream *substream,
 			mod |= MOD_BLCS_24BIT;
 		else
 			mod |= MOD_BLCP_24BIT;
-		if (is_manager(i2s))
+
 			mod |= MOD_BLC_24BIT;
 		break;
 	default:
@@ -940,7 +975,7 @@ void i2s_disable(struct snd_soc_dai *dai, int pm_mode)
 
 /* We set constraints on the substream acc to the version of I2S */
 static int i2s_startup(struct snd_pcm_substream *substream,
-	  struct snd_soc_dai *dai)
+         struct snd_soc_dai *dai)
 {
 	i2s_enable(dai, RUNTIME);
 
@@ -958,7 +993,11 @@ static int config_setup(struct i2s_dai *i2s)
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	unsigned rfs, bfs, blc;
 	u32 psr;
-
+#ifdef USE_FORCED_IO_INIT
+	u32 con = readl(i2s->addr + I2SCON);
+	if (i2s->quirks & QUIRK_NEED_RSTCLR)
+		writel(con | CON_RSTCLR, i2s->addr + I2SCON);
+#endif
 	blc = get_blc(i2s);
 
 	bfs = i2s->bfs;
@@ -994,6 +1033,11 @@ static int config_setup(struct i2s_dai *i2s)
 				"%s:%d Other DAI busy\n", __func__, __LINE__);
 		return -EAGAIN;
 	}
+
+#ifdef CONFIG_SND_SAMSUNG_HQ
+	set_bfs(i2s, bfs);
+	set_rfs(i2s, rfs);
+#endif
 
 	/* Don't bother RFS, BFS & PSR in Slave mode */
 	if (is_slave(i2s))
@@ -1172,16 +1216,24 @@ err0:
 #ifdef CONFIG_PM
 static int i2s_suspend(struct snd_soc_dai *dai)
 {
-	if (dai->active)
+	pr_info("%s ++ : %s\n", __func__, dai->name);
+	if (dai->active) {
+		pr_info("%s && \n", __func__);
 		i2s_disable(dai, SLEEP);
+	}
+	pr_info("%s --\n", __func__);
 
 	return 0;
 }
 
 static int i2s_resume(struct snd_soc_dai *dai)
 {
-	if (dai->active)
+	pr_info("%s ++ : %s\n", __func__, dai->name);
+	if (dai->active) {
+		pr_info("%s ##\n", __func__);
 		i2s_enable(dai, SLEEP);
+	}
+	pr_info("%s --\n", __func__);
 
 	return 0;
 }
@@ -1340,7 +1392,7 @@ static const struct snd_soc_dai_ops samsung_i2s_dai_ops = {
 	.delay = i2s_delay,
 };
 
-#define SAMSUNG_I2S_RATES	SNDRV_PCM_RATE_8000_96000
+#define SAMSUNG_I2S_RATES	SNDRV_PCM_RATE_8000_192000
 
 #define SAMSUNG_I2S_FMTS	(SNDRV_PCM_FMTBIT_S8 | \
 					SNDRV_PCM_FMTBIT_S16_LE | \

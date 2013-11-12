@@ -25,8 +25,8 @@ ssize_t mcu_revision_show(struct device *dev,
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	return sprintf(buf, "AT01%u,AT01%u\n", get_module_rev(data),
-		data->uCurFirmRev);
+	return sprintf(buf, "AT01%u,AT01%u\n", data->uCurFirmRev,
+		get_module_rev(data));
 }
 
 ssize_t mcu_model_name_show(struct device *dev,

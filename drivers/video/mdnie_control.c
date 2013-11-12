@@ -29,6 +29,10 @@ static int br_takeover_point = 30;
 static int br_brightness_delta = 20;
 static int br_component_reduction = 0;
 
+static int black_component_increase = 0;
+static int black_component_increase_value = 0;
+static int black_component_increase_point = 255;
+
 enum mdnie_registers {
 	EFFECT_MASTER1	= 0x08,	/*SCR2 CC1 | CS2 DE1 | LoG8 WIENER4 NR2 HDR1*/
 	EFFECT_MASTER2	= 0x09,	/*MCM off*/
@@ -100,7 +104,7 @@ static ssize_t store_mdnie_property(struct device *dev,
 				     struct device_attribute *attr,
 				     const char *buf, size_t count);
 
-#define _effect(name_, reg_, mask_, shift_, regval_)\
+#define _effect(name_, reg_, mask_, shift_, absolute_, regval_)\
 { 									\
 	.attribute = {							\
 			.attr = {					\
@@ -114,6 +118,7 @@ static ssize_t store_mdnie_property(struct device *dev,
 	.mask 	= mask_ ,						\
 	.shift 	= shift_ ,						\
 	.value 	= 0 ,							\
+	.abs	= absolute_ ,						\
 	.regval = regval_						\
 }
 
@@ -123,6 +128,7 @@ struct mdnie_effect {
 	u16				mask;
 	u8				shift;
 	int				value;
+	bool				abs;
 	u16				regval;
 };
 
@@ -130,44 +136,44 @@ struct mdnie_effect mdnie_controls[] = {
 
 	/* Master switches */
 
-	_effect("s_channel_filters"	, EFFECT_MASTER1, (1 << 9), 9 , 1 ),
-	_effect("s_gamma_curve"		, EFFECT_MASTER1, (1 << 8), 8 , 1 ),
+	_effect("s_channel_filters"	, EFFECT_MASTER1, (1 << 9), 9 , 0, 1 ),
+	_effect("s_gamma_curve"		, EFFECT_MASTER1, (1 << 8), 8 , 0, 1 ),
 
-	_effect("s_chroma_saturation"	, EFFECT_MASTER1, (1 << 5), 5 , 1 ),
-	_effect("s_edge_enhancement"	, EFFECT_MASTER1, (1 << 4), 4 , 0 ),
+	_effect("s_chroma_saturation"	, EFFECT_MASTER1, (1 << 5), 5 , 0, 1 ),
+	_effect("s_edge_enhancement"	, EFFECT_MASTER1, (1 << 4), 4 , 0, 0 ),
 
-	_effect("s_log"			, EFFECT_MASTER1, (1 << 3), 3 , 0 ),
-	_effect("s_wiener"		, EFFECT_MASTER1, (1 << 2), 2 , 0 ),
-	_effect("s_noise_reduction"	, EFFECT_MASTER1, (1 << 1), 1 , 0 ),
-	_effect("s_high_dynamic_range"	, EFFECT_MASTER1, (1 << 0), 0 , 0 ),
+	_effect("s_log"			, EFFECT_MASTER1, (1 << 3), 3 , 0, 0 ),
+	_effect("s_wiener"		, EFFECT_MASTER1, (1 << 2), 2 , 0, 0 ),
+	_effect("s_noise_reduction"	, EFFECT_MASTER1, (1 << 1), 1 , 0, 0 ),
+	_effect("s_high_dynamic_range"	, EFFECT_MASTER1, (1 << 0), 0 , 0, 0 ),
 
 	/* Ditigal edge enhancement */
 
-	_effect("de_egth"		, DE_EGTH	, 0x00ff, 0	, 128	),
+	_effect("de_egth"		, DE_EGTH	, 0x00ff, 0	, 0, 128),
 
-	_effect("de_positive_e"		, DE_PE		, 0x00ff, 0	, 48	),
-	_effect("de_positive_f"		, DE_PF		, 0x00ff, 0	, 96	),
-	_effect("de_positive_b"		, DE_PB		, 0x00ff, 0	, 96	),
+	_effect("de_positive_e"		, DE_PE		, 0x00ff, 0	, 0, 48	),
+	_effect("de_positive_f"		, DE_PF		, 0x00ff, 0	, 0, 96	),
+	_effect("de_positive_b"		, DE_PB		, 0x00ff, 0	, 0, 96	),
 
-	_effect("de_negative_e"		, DE_NE		, 0x00ff, 0	, 48	),
-	_effect("de_negative_f"		, DE_NF		, 0x00ff, 0	, 96	),
-	_effect("de_negative_b"		, DE_NB		, 0x00ff, 0	, 96	),
+	_effect("de_negative_e"		, DE_NE		, 0x00ff, 0	, 0, 48	),
+	_effect("de_negative_f"		, DE_NF		, 0x00ff, 0	, 0, 96	),
+	_effect("de_negative_b"		, DE_NB		, 0x00ff, 0	, 0, 96	),
 
-	_effect("de_min_ratio"		, DE_MIN_RATIO	, 0xffff, 0	, 256	),
-	_effect("de_max_ratio"		, DE_MAX_RATIO	, 0xffff, 0	, 4096	),
+	_effect("de_min_ratio"		, DE_MIN_RATIO	, 0xffff, 0	, 0, 256),
+	_effect("de_max_ratio"		, DE_MAX_RATIO	, 0xffff, 0	, 0, 4096),
 
 	/* Chroma saturation */
 
-	_effect("cs_weight"		, CS_WEIGHT_GRTH, 0xff00, 8	, 9	),
-	_effect("cs_gray_threshold"	, CS_WEIGHT_GRTH, 0x00ff, 0	, 4	),
+	_effect("cs_weight"		, CS_WEIGHT_GRTH, 0xff00, 8	, 1, 9	),
+	_effect("cs_gray_threshold"	, CS_WEIGHT_GRTH, 0x00ff, 0	, 1, 4	),
 
-	_effect("cs_red"		, CS_HG_RY	, 0xff00, 8	, 18	),
-	_effect("cs_green"		, CS_HG_GC	, 0xff00, 8	, 14	),
-	_effect("cs_blue"		, CS_HG_BM	, 0xff00, 8	, 16	),
+	_effect("cs_red"		, CS_HG_RY	, 0xff00, 8	, 1, 18	),
+	_effect("cs_green"		, CS_HG_GC	, 0xff00, 8	, 1, 14	),
+	_effect("cs_blue"		, CS_HG_BM	, 0xff00, 8	, 1, 16	),
 
-	_effect("cs_yellow"		, CS_HG_RY	, 0x00ff, 0	, 19	),
-	_effect("cs_cyan"		, CS_HG_GC	, 0x00ff, 0	, 10	),
-	_effect("cs_magenta"		, CS_HG_BM	, 0x00ff, 0	, 16	),
+	_effect("cs_yellow"		, CS_HG_RY	, 0x00ff, 0	, 1, 19	),
+	_effect("cs_cyan"		, CS_HG_GC	, 0x00ff, 0	, 1, 10	),
+	_effect("cs_magenta"		, CS_HG_BM	, 0x00ff, 0	, 1, 16	),
 
 	/* Colour channel pass-through filters
 	 * scr_x_y:
@@ -175,59 +181,59 @@ struct mdnie_effect mdnie_controls[] = {
 	 *	y = Channel component modifier
 	 */
 
-	_effect("scr_red_red"		, SCR_RR_CR	, 0xff00, 8	, 247	),
-	_effect("scr_red_green"		, SCR_RG_CG	, 0xff00, 8	, 17	),
-	_effect("scr_red_blue"		, SCR_RB_CB	, 0xff00, 8	, 0	),
+	_effect("scr_red_red"		, SCR_RR_CR	, 0xff00, 8	, 1, 247),
+	_effect("scr_red_green"		, SCR_RG_CG	, 0xff00, 8	, 1, 17	),
+	_effect("scr_red_blue"		, SCR_RB_CB	, 0xff00, 8	, 1, 0	),
 
-	_effect("scr_cyan_red"		, SCR_RR_CR	, 0x00ff, 0	, 42	),
-	_effect("scr_cyan_green"	, SCR_RG_CG	, 0x00ff, 0	, 240	),
-	_effect("scr_cyan_blue"		, SCR_RB_CB	, 0x00ff, 0	, 255	),
+	_effect("scr_cyan_red"		, SCR_RR_CR	, 0x00ff, 0	, 1, 42	),
+	_effect("scr_cyan_green"	, SCR_RG_CG	, 0x00ff, 0	, 1, 240),
+	_effect("scr_cyan_blue"		, SCR_RB_CB	, 0x00ff, 0	, 1, 255),
 	
-	_effect("scr_green_red"		, SCR_GR_MR	, 0xff00, 8	, 64	),
-	_effect("scr_green_green"	, SCR_GG_MG	, 0xff00, 8	, 245	),
-	_effect("scr_green_blue"	, SCR_GB_MB	, 0xff00, 8	, 0	),
+	_effect("scr_green_red"		, SCR_GR_MR	, 0xff00, 8	, 1, 64	),
+	_effect("scr_green_green"	, SCR_GG_MG	, 0xff00, 8	, 1, 245),
+	_effect("scr_green_blue"	, SCR_GB_MB	, 0xff00, 8	, 1, 0	),
 
-	_effect("scr_magenta_red"	, SCR_GR_MR	, 0x00ff, 0	, 255	),
-	_effect("scr_magenta_green"	, SCR_GG_MG	, 0x00ff, 0	, 20	),
-	_effect("scr_magenta_blue"	, SCR_GB_MB	, 0x00ff, 0	, 255	),
+	_effect("scr_magenta_red"	, SCR_GR_MR	, 0x00ff, 0	, 1, 255),
+	_effect("scr_magenta_green"	, SCR_GG_MG	, 0x00ff, 0	, 1, 20	),
+	_effect("scr_magenta_blue"	, SCR_GB_MB	, 0x00ff, 0	, 1, 255),
 	
-	_effect("scr_blue_red"		, SCR_BR_YR	, 0xff00, 8	, 0	),
-	_effect("scr_blue_green"	, SCR_BG_YG	, 0xff00, 8	, 0	),
-	_effect("scr_blue_blue"		, SCR_BB_YB	, 0xff00, 8	, 255	),
+	_effect("scr_blue_red"		, SCR_BR_YR	, 0xff00, 8	, 1, 0	),
+	_effect("scr_blue_green"	, SCR_BG_YG	, 0xff00, 8	, 1, 0	),
+	_effect("scr_blue_blue"		, SCR_BB_YB	, 0xff00, 8	, 1, 255),
 
-	_effect("scr_yellow_red"	, SCR_BR_YR	, 0x00ff, 0	, 255	),
-	_effect("scr_yellow_green"	, SCR_BG_YG	, 0x00ff, 0	, 241	),
-	_effect("scr_yellow_blue"	, SCR_BB_YB	, 0x00ff, 0	, 8	),
+	_effect("scr_yellow_red"	, SCR_BR_YR	, 0x00ff, 0	, 1, 255),
+	_effect("scr_yellow_green"	, SCR_BG_YG	, 0x00ff, 0	, 1, 241),
+	_effect("scr_yellow_blue"	, SCR_BB_YB	, 0x00ff, 0	, 1, 8	),
 
-	_effect("scr_black_red"		, SCR_KR_WR	, 0xff00, 8	, 0	),
-	_effect("scr_black_green"	, SCR_KG_WG	, 0xff00, 8	, 0	),
-	_effect("scr_black_blue"	, SCR_KB_WB	, 0xff00, 8	, 0	),
+	_effect("scr_black_red"		, SCR_KR_WR	, 0xff00, 8	, 1, 0	),
+	_effect("scr_black_green"	, SCR_KG_WG	, 0xff00, 8	, 1, 0	),
+	_effect("scr_black_blue"	, SCR_KB_WB	, 0xff00, 8	, 1, 0	),
 
-	_effect("scr_white_red"		, SCR_KR_WR	, 0x00ff, 0	, 255	),
-	_effect("scr_white_green"	, SCR_KG_WG	, 0x00ff, 0	, 245	),
-	_effect("scr_white_blue"	, SCR_KB_WB	, 0x00ff, 0	, 246	),
+	_effect("scr_white_red"		, SCR_KR_WR	, 0x00ff, 0	, 1, 255),
+	_effect("scr_white_green"	, SCR_KG_WG	, 0x00ff, 0	, 1, 245),
+	_effect("scr_white_blue"	, SCR_KB_WB	, 0x00ff, 0	, 1, 246),
 
 	/* Greyscale gamma curve */
 
-	_effect("cc_channel_strength"	, CC_CHSEL_STR	, 0xffff, 0	, 128	),
+	_effect("cc_channel_strength"	, CC_CHSEL_STR	, 0xffff, 0	, 1, 128),
 	
-	_effect("cc_0"			, CC_0		, 0x00ff, 0	, 0	),
-	_effect("cc_16"			, CC_1		, 0xff00, 8	, 24	),
-	_effect("cc_32"			, CC_2		, 0xff00, 8	, 31	),
-	_effect("cc_48"			, CC_3		, 0xff00, 8	, 49	),
-	_effect("cc_64"			, CC_4		, 0xff00, 8	, 61	),
-	_effect("cc_80"			, CC_5		, 0xff00, 8	, 82	),
-	_effect("cc_96"			, CC_6		, 0xff00, 8	, 98	),
-	_effect("cc_112"		, CC_7		, 0xff00, 8	, 114	),
-	_effect("cc_128"		, CC_8		, 0xff00, 8	, 131	),
-	_effect("cc_144"		, CC_1		, 0x00ff, 0	, 145	),
-	_effect("cc_160"		, CC_2		, 0x00ff, 0	, 163	),
-	_effect("cc_176"		, CC_3		, 0x00ff, 0	, 178	),
-	_effect("cc_192"		, CC_4		, 0x00ff, 0	, 192	),
-	_effect("cc_208"		, CC_5		, 0x00ff, 0	, 208	),
-	_effect("cc_224"		, CC_6		, 0x00ff, 0	, 225	),
-	_effect("cc_240"		, CC_7		, 0x00ff, 0	, 240	),
-	_effect("cc_255"		, CC_8		, 0x00ff, 0	, 255	),
+	_effect("cc_0"			, CC_0		, 0x00ff, 0	, 1, 0	),
+	_effect("cc_16"			, CC_1		, 0xff00, 8	, 1, 24	),
+	_effect("cc_32"			, CC_2		, 0xff00, 8	, 1, 31	),
+	_effect("cc_48"			, CC_3		, 0xff00, 8	, 1, 49	),
+	_effect("cc_64"			, CC_4		, 0xff00, 8	, 1, 61	),
+	_effect("cc_80"			, CC_5		, 0xff00, 8	, 1, 82	),
+	_effect("cc_96"			, CC_6		, 0xff00, 8	, 1, 98	),
+	_effect("cc_112"		, CC_7		, 0xff00, 8	, 1, 114),
+	_effect("cc_128"		, CC_8		, 0xff00, 8	, 1, 131),
+	_effect("cc_144"		, CC_1		, 0x00ff, 0	, 1, 145),
+	_effect("cc_160"		, CC_2		, 0x00ff, 0	, 1, 163),
+	_effect("cc_176"		, CC_3		, 0x00ff, 0	, 1, 178),
+	_effect("cc_192"		, CC_4		, 0x00ff, 0	, 1, 192),
+	_effect("cc_208"		, CC_5		, 0x00ff, 0	, 1, 208),
+	_effect("cc_224"		, CC_6		, 0x00ff, 0	, 1, 225),
+	_effect("cc_240"		, CC_7		, 0x00ff, 0	, 1, 240),
+	_effect("cc_255"		, CC_8		, 0x00ff, 0	, 1, 255),
 };
 
 static int is_switch(unsigned int reg)
@@ -249,13 +255,20 @@ static int effect_switch_hook(struct mdnie_effect *effect, unsigned short regval
 
 static int secondary_hook(struct mdnie_effect *effect, int val)
 {
-	val += effect->value;
+	if (effect->abs)
+		val = effect->regval;
+	else
+		val += effect->value;
 
-	if (!(br_reduction))
-		return val;
-
-	if (effect->reg >= SCR_RR_CR && effect->reg <= SCR_KB_WB)
-		val -= br_component_reduction;
+	switch (effect->reg) {
+		case SCR_KR_WR...SCR_KB_WB:
+			if (effect->shift) {
+				val += black_component_increase;
+				break;
+			}
+		case SCR_RR_CR...SCR_BB_YB:
+			val -= br_component_reduction;
+	}
 
 	return val;
 }
@@ -269,7 +282,7 @@ unsigned short mdnie_reg_hook(unsigned short reg, unsigned short value)
 
 	original = value;
 
-	if (unlikely(!sequence_hook && !reg_hook || g_mdnie->negative == NEGATIVE_ON))
+	if (unlikely((!sequence_hook && !reg_hook) || g_mdnie->negative == NEGATIVE_ON))
 		return value;
 
 	for (i = 0; i < ARRAY_SIZE(mdnie_controls); i++) {
@@ -325,7 +338,7 @@ void mdnie_update_brightness(int brightness, bool is_auto, bool force)
 {
 	static int prev_brightness = 255;
 	static int prev_auto = false;
-	int weight, adjusted_brightness;
+	int weight, adjusted_brightness, tmp, refresh = 0;
 
 	if (unlikely(force)) {
 		brightness = prev_brightness;
@@ -337,23 +350,30 @@ void mdnie_update_brightness(int brightness, bool is_auto, bool force)
 	if(unlikely(adjusted_brightness < 1))
 		adjusted_brightness = 1;
 
-	if(adjusted_brightness > br_takeover_point) {
+	tmp = black_component_increase;
+	black_component_increase = (brightness > black_component_increase_point)
+					? 0 : black_component_increase_value;
+
+	if (tmp != black_component_increase)
+		refresh += true;
+
+	tmp = br_component_reduction;
+
+	if (adjusted_brightness > br_takeover_point) {
 		br_component_reduction = 0;
-
-		if(prev_brightness < br_takeover_point)
-			goto do_refresh;
-
-		goto update_previous;
+		goto update;
 	}
 
 	weight = 1000 - ((adjusted_brightness * 1000) / br_takeover_point);
-
 	br_component_reduction = ((br_reduction) * weight) / 1000;
 
-do_refresh:
-	do_mdnie_refresh(NULL);
+	if (tmp != br_component_reduction)
+		refresh += true;
 
-update_previous:
+update:
+	if (refresh)
+		do_mdnie_refresh(NULL);
+
 	prev_brightness = brightness;
 	prev_auto = is_auto;
 
@@ -378,11 +398,10 @@ static ssize_t show_mdnie_property(struct device *dev,
 {
 	struct mdnie_effect *effect = (struct mdnie_effect*)(attr);
 
-
-	if(is_switch(effect->reg))
+	if (effect->abs)
+		return sprintf(buf, "%d", effect->regval);
+	else
 		return sprintf(buf, "%d", effect->value);
-	
-	return sprintf(buf, "%d", effect->value);
 };
 
 static ssize_t store_mdnie_property(struct device *dev,
@@ -401,10 +420,13 @@ static ssize_t store_mdnie_property(struct device *dev,
 		if(val > (effect->mask >> effect->shift))
 			val = (effect->mask >> effect->shift);
 
-		if(val < -(effect->mask >> effect->shift))
+		if(!effect->abs && val < -(effect->mask >> effect->shift))
 			val = -(effect->mask >> effect->shift);
 
-		effect->value = val;
+		if(effect->abs)
+			effect->regval = val;
+		else
+			effect->value = val;
 	}
 
 	scheduled_refresh();
@@ -440,11 +462,17 @@ MAIN_CONTROL(br_reduction, br_reduction, forced_brightness);
 MAIN_CONTROL(br_takeover_point, br_takeover_point, forced_brightness);
 MAIN_CONTROL(br_brightness_delta, br_brightness_delta, forced_brightness);
 
+MAIN_CONTROL(black_increase_value, black_component_increase_value, forced_brightness);
+MAIN_CONTROL(black_increase_point, black_component_increase_point, forced_brightness);
+
 DEVICE_ATTR(hook_intercept, 0664, show_reg_hook, store_reg_hook);
 DEVICE_ATTR(sequence_intercept, 0664, show_sequence_intercept, store_sequence_intercept);
 DEVICE_ATTR(brightness_reduction, 0664, show_br_reduction, store_br_reduction);
 DEVICE_ATTR(brightness_takeover_point, 0664, show_br_takeover_point, store_br_takeover_point);
 DEVICE_ATTR(brightness_input_delta, 0664, show_br_brightness_delta, store_br_brightness_delta);
+
+DEVICE_ATTR(black_increase_value, 0664, show_black_increase_value, store_black_increase_value);
+DEVICE_ATTR(black_increase_point, 0664, show_black_increase_point, store_black_increase_point);
 
 void init_intercept_control(struct kobject *kobj)
 {
@@ -462,6 +490,9 @@ void init_intercept_control(struct kobject *kobj)
 	ret = sysfs_create_file(kobj, &dev_attr_brightness_reduction.attr);
 	ret = sysfs_create_file(kobj, &dev_attr_brightness_takeover_point.attr);
 	ret = sysfs_create_file(kobj, &dev_attr_brightness_input_delta.attr);
+
+	ret = sysfs_create_file(kobj, &dev_attr_black_increase_value.attr);
+	ret = sysfs_create_file(kobj, &dev_attr_black_increase_point.attr);
 
 	INIT_DELAYED_WORK(&mdnie_refresh_work, do_mdnie_refresh);
 }

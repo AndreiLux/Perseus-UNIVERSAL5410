@@ -10,6 +10,7 @@
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/err.h>
+#include <linux/input.h>
 
 struct class *sensors_class;
 EXPORT_SYMBOL_GPL(sensors_class);
@@ -32,18 +33,19 @@ static void set_sensor_attr(struct device *dev,
 				"(dev, attributes[%d])\n", i);
 }
 
-int sensors_create_symlink(struct kobject *target,
-		      const char *name)
+int sensors_create_symlink(struct input_dev *inputdev)
 {
 	int err = 0;
 
-	if (symlink_dev == NULL)
+	if (symlink_dev == NULL) {
 		pr_err("%s, symlink_dev is NULL!!!\n", __func__);
+		return err ;
+	}
 
-	err = sysfs_create_link(&symlink_dev->kobj, target, name);
+	err = sysfs_create_link(&symlink_dev->kobj, &inputdev->dev.kobj, inputdev->name);
 
 	if (err < 0) {
-		pr_err("%s, %s failed!(%d)\n", __func__, name, err);
+		pr_err("%s, %s failed!(%d)\n", __func__, inputdev->name, err);
 		return err;
 	}
 
@@ -51,14 +53,15 @@ int sensors_create_symlink(struct kobject *target,
 }
 EXPORT_SYMBOL_GPL(sensors_create_symlink);
 
-void sensors_remove_symlink(struct kobject *target,
-		      const char *name)
+void sensors_remove_symlink(struct input_dev *inputdev)
 {
 
-	if (symlink_dev == NULL)
+	if (symlink_dev == NULL) {
 		pr_err("%s, symlink_dev is NULL!!!\n", __func__);
+		return;
+	}
 
-	sysfs_delete_link(&symlink_dev->kobj, target, name);
+	sysfs_delete_link(&symlink_dev->kobj, &inputdev->dev.kobj, inputdev->name);
 }
 EXPORT_SYMBOL_GPL(sensors_remove_symlink);
 
@@ -106,9 +109,11 @@ void destroy_sensor_class(void)
 		class_destroy(sensors_class);
 		sensors_class = NULL;
 	}
+
 	if (sensors_event_class) {
 		device_destroy(sensors_event_class, symlink_dev->devt);
 		class_destroy(sensors_event_class);
+		symlink_dev = NULL;
 		sensors_event_class = NULL;
 	}
 }
@@ -134,7 +139,7 @@ static int __init sensors_class_init(void)
 	}
 
 	symlink_dev = device_create(sensors_event_class, NULL, 0, NULL,
-		"%s", "symlink2");
+		"%s", "symlink");
 
 	if (IS_ERR(symlink_dev)) {
 		pr_err("[SENSORS CORE] symlink_dev create failed!"\

@@ -19,8 +19,8 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 
-static struct device_type mfd_device_type = {
-	.name = "mfd_device",
+static struct device_type mfd_dev_type = {
+	.name	= "mfd_device",
 };
 
 int mfd_cell_enable(struct platform_device *pdev)
@@ -92,7 +92,7 @@ static int mfd_add_device(struct device *parent, int id,
 		goto fail_device;
 
 	pdev->dev.parent = parent;
-	pdev->dev.type = &mfd_device_type;
+	pdev->dev.type = &mfd_dev_type;
 
 	if (cell->pdata_size) {
 		ret = platform_device_add_data(pdev,
@@ -192,7 +192,7 @@ static int mfd_remove_devices_fn(struct device *dev, void *c)
 	const struct mfd_cell *cell;
 	atomic_t **usage_count = c;
 
-	if (dev->type != &mfd_device_type)
+	if (dev->type != &mfd_dev_type)
 		return 0;
 
 	pdev = to_platform_device(dev);

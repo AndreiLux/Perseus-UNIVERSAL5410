@@ -1863,11 +1863,6 @@ static struct clk exynos5_init_clocks_off[] = {
 		.enable         = exynos5_clk_ip_fsys_ctrl,
 		.ctrlbit        = ((1 << 26) | (1 << 25) | (1 << 16) | (1 << 15) | (1 << 5) | (1 << 4)),
 	}, {
-		.name		= "tmu_apbif",
-		.parent		= &exynos5_clk_aclk_66.clk,
-		.enable		= exynos5_clk_ip_peris_ctrl,
-		.ctrlbit	= (1 << 21),
-	}, {
 		.name		= "dwmci",
 		.devname	= "dw_mmc.0",
 		.parent		= &exynos5_clk_aclk_200.clk,
@@ -3145,6 +3140,11 @@ static struct vpll_div_data exynos5_vpll_div[] = {
 	{440000000, 3, 220, 2, 0, 0,  0, 0},
 	{480000000, 3, 240, 2, 0, 0,  0, 0},
 	{532000000, 3, 133, 1, 0, 0,  0, 0},
+	{600000000, 2, 100, 1, 0, 0,  0, 0},
+	{640000000, 3, 160, 1, 0, 0,  0, 0},
+	{700000000, 3, 175, 1, 0, 0,  0, 0},
+	{750000000, 2, 125, 1, 0, 0,  0, 0},
+	{800000000, 2, 133, 1, 0, 0,  0, 0},
 	{880000000, 3, 220, 1, 0, 0,  0, 0},
 };
 

@@ -57,39 +57,6 @@
 
 #include <trace/events/vmscan.h>
 
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-#include <linux/swap.h>
-
-#define MAX_SCAN_NO 2048
-#define SOFT_RECLAIM_ONETIME 1024
-#define HIDDEN_CGROUP_NAME	"hidden"
-#define RTCC_CGROUP_NAME	"rtcc"
-#endif
-
-struct cgroup_subsys mem_cgroup_subsys __read_mostly;
-#define MEM_CGROUP_RECLAIM_RETRIES	5
-struct mem_cgroup *root_mem_cgroup __read_mostly;
-
-#ifdef CONFIG_CGROUP_MEM_RES_CTLR_SWAP
-/* Turned on only when memory cgroup is enabled && really_do_swap_account = 1 */
-int do_swap_account __read_mostly;
-
-/* for remember boot option*/
-#ifdef CONFIG_CGROUP_MEM_RES_CTLR_SWAP_ENABLED
-static int really_do_swap_account __initdata = 1;
-#else
-static int really_do_swap_account __initdata = 0;
-#endif
-
-#else
-#define do_swap_account		(0)
-#endif
-
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-extern void need_soft_reclaim(void);
-extern int hidden_cgroup_counter;
-#endif /* CONFIG_ZRAM_FOR_ANDROID */
-
 /*
  * Statistics for memory cgroup.
  */
@@ -1502,17 +1469,26 @@ static int mem_cgroup_count_children(struct mem_cgroup *memcg)
 u64 mem_cgroup_get_limit(struct mem_cgroup *memcg)
 {
 	u64 limit;
-	u64 memsw;
 
 	limit = res_counter_read_u64(&memcg->res, RES_LIMIT);
-	limit += total_swap_pages << PAGE_SHIFT;
 
-	memsw = res_counter_read_u64(&memcg->memsw, RES_LIMIT);
 	/*
-	 * If memsw is finite and limits the amount of swap space available
-	 * to this memcg, return that limit.
+	 * Do not consider swap space if we cannot swap due to swappiness
 	 */
-	return min(limit, memsw);
+	if (mem_cgroup_swappiness(memcg)) {
+		u64 memsw;
+
+		limit += total_swap_pages << PAGE_SHIFT;
+		memsw = res_counter_read_u64(&memcg->memsw, RES_LIMIT);
+
+		/*
+		 * If memsw is finite and limits the amount of swap space
+		 * available to this memcg, return that limit.
+		 */
+		limit = min(limit, memsw);
+	}
+
+	return limit;
 }
 
 static unsigned long mem_cgroup_reclaim(struct mem_cgroup *memcg,
@@ -1731,17 +1707,11 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 		}
 		if (!mem_cgroup_reclaimable(victim, false))
 			continue;
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-		if(nr_swap_pages <= SOFT_RECLAIM_ONETIME)
-			break;
-#endif
+
 		total += mem_cgroup_shrink_node_zone(victim, gfp_mask, false,
 						     zone, &nr_scanned);
 		*total_scanned += nr_scanned;
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-		if(*total_scanned > MAX_SCAN_NO)
-			break;
-#endif
+
 		if (!res_counter_soft_limit_excess(&root_memcg->res))
 			break;
 	}
@@ -5699,15 +5669,6 @@ static void mem_cgroup_move_task(struct cgroup *cont,
 		put_swap_token(mm);
 		mmput(mm);
 	}
-
-#ifdef CONFIG_ZRAM_FOR_ANDROID
-	if (mc.to && rtcc_memcgrp == mc.to) {
-		need_soft_reclaim();
-	}
-	else if (rtcc_memcgrp == NULL) {
-		rtcc_memcgrp = get_compcache_memgrp();
-	}
-#endif /* CONFIG_ZRAM_FOR_ANDROID */
 
 	if (mc.to)
 		mem_cgroup_clear_mc();

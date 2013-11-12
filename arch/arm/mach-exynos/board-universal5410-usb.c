@@ -247,9 +247,7 @@ static void __init universal5410_drd1_init(void)
 }
 
 static struct platform_device *universal5410_usb_devices[] __initdata = {
-#if !defined(CONFIG_LINK_DEVICE_HSIC)
 	&s5p_device_ehci,
-#endif
 	&exynos5_device_usb3_drd0,
 	&exynos5_device_usb3_drd1,
 #if defined(CONFIG_USB_HOST_NOTIFY)
@@ -278,9 +276,9 @@ static void __init universal5410_usbgadget_init(void)
 		android_pdata->cdfs_support = cdfs;
 		printk(KERN_DEBUG "usb: %s: default luns=%d, new luns=%d\n",
 				__func__, android_pdata->nluns, newluns);
-		
+
 		exynos5_usbgadget_set_platdata(android_pdata);
-		
+
 	} else {
 		printk(KERN_DEBUG "usb: %s android_pdata is not available\n",
 				__func__);
@@ -290,9 +288,7 @@ static void __init universal5410_usbgadget_init(void)
 
 void __init exynos5_universal5410_usb_init(void)
 {
-#if !defined(CONFIG_LINK_DEVICE_HSIC)
 	universal5410_ehci_init();
-#endif
 
 #ifdef CONFIG_USB_GADGET
 	universal5410_usbgadget_init();
@@ -312,19 +308,3 @@ void __init exynos5_universal5410_usb_init(void)
 	platform_add_devices(universal5410_usb_devices,
 			ARRAY_SIZE(universal5410_usb_devices));
 }
-
-#if defined(CONFIG_LINK_DEVICE_HSIC)
-static int __init s5p_ehci_device_initcall(void)
-{
-	int ret;
-
-	universal5410_ehci_init();
-
-	ret = platform_device_register(&s5p_device_ehci);
-	if (ret < 0)
-		pr_err("ehci register fail err=%d\n", ret);
-
-	return ret;
-}
-late_initcall(s5p_ehci_device_initcall);
-#endif

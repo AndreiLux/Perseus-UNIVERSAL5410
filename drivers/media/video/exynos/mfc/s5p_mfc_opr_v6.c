@@ -1611,7 +1611,7 @@ int s5p_mfc_encode_one_frame(struct s5p_mfc_ctx *ctx)
 	return 0;
 }
 
-static inline int s5p_mfc_get_new_ctx(struct s5p_mfc_dev *dev)
+inline int s5p_mfc_get_new_ctx(struct s5p_mfc_dev *dev)
 {
 	int new_ctx;
 	int cnt;

@@ -47,19 +47,58 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <linux/ioctl.h>
 
+#ifdef __KERNEL__
+#include "sgxapi_km.h"
+#else
+#include "sgxapi.h"
+#endif
+
+#include "servicesext.h" // PVRSRV_SYNC_DATA
+#include "img_types.h"
+
+/* This matches the sw_sync create ioctl data */
 struct PVR_SYNC_CREATE_IOCTL_DATA
 {
-	IMG_HANDLE hKernelServices;
-	IMG_HANDLE hSyncInfo;
-	IMG_CHAR name[32];
-	int iFenceFD;
+	char	name[32];
+	__s32	fence; /* fd of new fence */
+                   /* or fd of already alloc'd fence */
+	__s32	allocdSyncInfo; /* If this is provided (not -1) this points to a fence allocated
+	                         *  by the ALLOC_FENCE ioctl, and it's syncinfo is moved to the newly created
+							 *  fence */
 };
 
-struct PVR_SYNC_IMPORT_IOCTL_DATA
+struct PVR_SYNC_ALLOC_IOCTL_DATA
 {
-	IMG_HANDLE hKernelServices;
-	IMG_HANDLE hSyncInfo;
-	int iFenceFD;
+	char name[32];
+	__s32 fence; /* fd of newly alloc'd fence */
+};
+
+#define PVR_SYNC_DEBUG_MAX_POINTS 3
+
+typedef struct
+{
+	IMG_UINT64 ui64Stamp;
+	IMG_UINT32 ui32WriteOpsPendingSnapshot;
+}
+PVR_SYNC_DEBUG;
+
+struct PVR_SYNC_DEBUG_IOCTL_DATA
+{
+	/* Input: Fence to acquire debug for */
+	int						iFenceFD;
+
+	/* Output: Number of points merged into this fence */
+	IMG_UINT32				ui32NumPoints;
+
+	struct
+	{
+		/* Output: Metadata for sync point */
+		PVR_SYNC_DEBUG		sMetaData;
+
+		/* Output: 'Live' sync information. */
+		PVRSRV_SYNC_DATA	sSyncData;
+	}
+	sSync[PVR_SYNC_DEBUG_MAX_POINTS];
 };
 
 #define PVR_SYNC_IOC_MAGIC	'W'
@@ -67,8 +106,11 @@ struct PVR_SYNC_IMPORT_IOCTL_DATA
 #define PVR_SYNC_IOC_CREATE_FENCE \
 	_IOWR(PVR_SYNC_IOC_MAGIC, 0, struct PVR_SYNC_CREATE_IOCTL_DATA)
 
-#define PVR_SYNC_IOC_IMPORT_FENCE \
-	_IOWR(PVR_SYNC_IOC_MAGIC, 1, struct PVR_SYNC_IMPORT_IOCTL_DATA)
+#define PVR_SYNC_IOC_DEBUG_FENCE \
+	_IOWR(PVR_SYNC_IOC_MAGIC, 1, struct PVR_SYNC_DEBUG_IOCTL_DATA)
+
+#define PVR_SYNC_IOC_ALLOC_FENCE \
+	_IOWR(PVR_SYNC_IOC_MAGIC, 2, struct PVR_SYNC_ALLOC_IOCTL_DATA)
 
 #define PVRSYNC_MODNAME "pvr_sync"
 

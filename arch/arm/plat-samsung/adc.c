@@ -200,21 +200,11 @@ int s3c_adc_start(struct s3c_adc_client *client,
 		return -EINVAL;
 	}
 
-	if (nr_samples == 0)
-		return -EINVAL;
-
-retry:
 	spin_lock_irqsave(&adc->lock, flags);
 
 	if (client->is_ts && adc->ts_pend) {
 		spin_unlock_irqrestore(&adc->lock, flags);
 		return -EAGAIN;
-	}
-
-	if (!list_empty(&client->pend)) {
-		spin_unlock_irqrestore(&adc->lock, flags);
-		usleep_range(250, 500);
-		goto retry;
 	}
 
 	client->channel = channel;

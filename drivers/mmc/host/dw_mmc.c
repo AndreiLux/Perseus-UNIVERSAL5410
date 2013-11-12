@@ -3462,6 +3462,7 @@ EXPORT_SYMBOL(dw_mci_suspend);
 int dw_mci_resume(struct dw_mci *host)
 {
 	int i, ret;
+	host->current_speed = 0;
 
 	/* eMMC / SD power on and set GPIOs */
 	if (host->pdata->cfg_gpio) {

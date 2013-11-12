@@ -58,6 +58,7 @@ struct synaptics_rmi4_platform_data {
 #ifdef NO_0D_WHILE_2D
 	int (*led_power_on) (bool);
 #endif
+	unsigned char (*get_ddi_type)(void);	/* to indentify ddi type */
 	void (*enable_sync)(bool on);
 	const char *firmware_name;
 	const char *fac_firmware_name;

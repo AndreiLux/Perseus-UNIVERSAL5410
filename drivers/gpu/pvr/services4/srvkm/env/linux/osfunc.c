@@ -89,7 +89,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "linkage.h"
 #include "pvr_uaccess.h"
 #include "lock.h"
-#if defined(SUPPORT_ANDROID_SYNC)
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
 #include "pvr_sync.h"
 #endif
 
@@ -117,7 +117,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if defined(EMULATOR)
 #define EVENT_OBJECT_TIMEOUT_MS		(2000)
 #else
-#define EVENT_OBJECT_TIMEOUT_MS		(300)
+#define EVENT_OBJECT_TIMEOUT_MS		(100)
 #endif /* EMULATOR */
 
 #if !defined(DEBUG_LINUX_MEMORY_ALLOCATIONS)
@@ -306,6 +306,7 @@ ExitSkipSwitch:
     *phOSMemHandle = psLinuxMemArea;
     
     LinuxMemAreaRegister(psLinuxMemArea);
+/* S.LSI */
     psLinuxMemArea->bDeferredFree = IMG_FALSE;
 
     return PVRSRV_OK;
@@ -1128,10 +1129,9 @@ static void MISRWrapper(
 
 	PVRSRVMISR(psSysData);
 
-#if defined(SUPPORT_ANDROID_SYNC)
+#if defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
 	PVRSyncUpdateAllSyncs();
 #endif
-
 }
 
 
@@ -1847,7 +1847,7 @@ OSUnRegisterMem (IMG_VOID *pvCpuVAddr,
             eError = PVRMMapRemoveRegisteredArea(psLinuxMemArea);
             if (eError != PVRSRV_OK)
             {
-                 PVR_DPF((PVR_DBG_ERROR, "%s(%p, %u, 0x%08X, %p) FAILED!",
+                 PVR_DPF((PVR_DBG_ERROR, "%s(%p, %" SIZE_T_FMT_LEN "u, 0x%08X, %p) FAILED!",
                           __FUNCTION__, pvCpuVAddr, uiBytes,
                           ui32MappingFlags, hOSMemHandle));
                 return eError;
@@ -2005,7 +2005,7 @@ OSUnReservePhys(IMG_VOID *pvCpuVAddr,
             eError = PVRMMapRemoveRegisteredArea(psLinuxMemArea);
             if (eError != PVRSRV_OK)
             {
-                 PVR_DPF((PVR_DBG_ERROR, "%s(%p, %u, 0x%08X, %p) FAILED!",
+                 PVR_DPF((PVR_DBG_ERROR, "%s(%p, %" SIZE_T_FMT_LEN "u, 0x%08X, %p) FAILED!",
                           __FUNCTION__, pvCpuVAddr, uiBytes,
                           ui32MappingFlags, hOSMemHandle));
                 return eError;
@@ -3559,8 +3559,8 @@ PVRSRV_ERROR OSAcquirePhysPageAddr(IMG_VOID *pvCPUVAddr,
     if (uBeyondEndAddr <= uStartAddr)
     {
         PVR_DPF((PVR_DBG_ERROR,
-            "OSAcquirePhysPageAddr: Invalid address range (start %x length %d)",
-		(unsigned int)uStartAddrOrig, uAddrRangeOrig));
+            "OSAcquirePhysPageAddr: Invalid address range (start " UINTPTR_FMT  ", length %" SIZE_T_FMT_LEN "x)",
+		uStartAddrOrig, uAddrRangeOrig));
         goto error;
     }
 
@@ -3997,7 +3997,7 @@ IMG_BOOL CheckExecuteCacheOp(IMG_HANDLE hOSMemHandle,
 
 	PVR_ASSERT(psLinuxMemArea != IMG_NULL);
 
-	LinuxLockMutex(&g_sMMapMutex);
+	LinuxLockMutexNested(&g_sMMapMutex, PVRSRV_LOCK_CLASS_MMAP);
 
 	psMMapOffsetStructList = &psLinuxMemArea->sMMapOffsetStructList;
 	uiAreaLength = psLinuxMemArea->uiByteSize;
@@ -4529,7 +4529,7 @@ IMG_VOID OSReleaseBridgeLock(IMG_VOID)
 
 IMG_VOID OSReacquireBridgeLock(IMG_VOID)
 {
-       LinuxLockMutex(&gPVRSRVLock);
+       LinuxLockMutexNested(&gPVRSRVLock, PVRSRV_LOCK_CLASS_BRIDGE);
 }
 
 typedef struct _OSTime

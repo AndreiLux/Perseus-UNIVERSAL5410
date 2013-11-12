@@ -335,6 +335,7 @@ SGXDoKickBW(IMG_UINT32 ui32BridgeID,
 		return 0;
 	}
 
+#if !defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC)
 	for(i=0; i<psDoKickIN->sCCBKick.ui32NumSrcSyncs; i++)
 	{
 		psRetOUT->eError =
@@ -348,7 +349,8 @@ SGXDoKickBW(IMG_UINT32 ui32BridgeID,
 			return 0;
 		}
 	}
-#endif/* #if defined(SUPPORT_SGX_GENERALISED_SYNCOBJECTS) */
+#endif /* !defined(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC) */
+#endif /* defined(SUPPORT_SGX_GENERALISED_SYNCOBJECTS) */
 
 	if (psDoKickIN->sCCBKick.ui32NumTAStatusVals > SGX_MAX_TA_STATUS_VALS)
 	{
@@ -987,6 +989,7 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 	IMG_BOOL bReleaseFailed = IMG_FALSE;
 	IMG_HANDLE hDummy;
 	IMG_UINT32 i;
+	IMG_VOID *pCommands = IMG_NULL;
 
 	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_SGX_DEVINITPART2);
 
@@ -1009,6 +1012,40 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 		return 0;
 	}
 
+	/* Copy debug script commands from UM to KM */
+	for(i = 0; i < SGX_FEATURE_MP_CORE_COUNT_3D; i++)
+	{
+		/* Allocate memory in KM */
+		psSGXDevInitPart2OUT->eError = OSAllocMem(PVRSRV_OS_PAGEABLE_HEAP,
+							SGX_MAX_PRINT_COMMANDS * sizeof(SGX_INIT_COMMAND),
+							(IMG_VOID **) &pCommands,
+							0,
+							"debug script commands kernel copy");
+		
+		if(psSGXDevInitPart2OUT->eError != PVRSRV_OK)
+		{
+			return 0;
+		}
+
+		/* Copy commands */
+		if(CopyFromUserWrapper(psPerProc,
+							ui32BridgeID,
+							pCommands,
+							psSGXDevInitPart2IN->sInitInfo.sScripts.apsSGXREGDebugCommandsPart2[i],
+							SGX_MAX_PRINT_COMMANDS * sizeof(SGX_INIT_COMMAND)) != PVRSRV_OK)
+		{
+			OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP,
+					SGX_MAX_PRINT_COMMANDS * sizeof(SGX_INIT_COMMAND),
+					pCommands,
+					0);
+			return -EFAULT;
+
+		}
+		/* update pointer */
+		psSGXDevInitPart2IN->sInitInfo.sScripts.apsSGXREGDebugCommandsPart2[i] = pCommands;
+		
+	}
+	
 	/* Check all the meminfo handles */
 	eError = PVRSRVLookupHandle(psPerProc->psHandleBase,
 						   &hDummy,
@@ -1185,25 +1222,6 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 	}
 #endif
 
-#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31559)
-	eError = PVRSRVLookupHandle(psPerProc->psHandleBase,
-						   &hDummy,
-						   psSGXDevInitPart2IN->sInitInfo.hKernelVDMSnapShotBufferMemInfo,
-						   PVRSRV_HANDLE_TYPE_MEM_INFO);
-	if (eError != PVRSRV_OK)
-	{
-		bLookupFailed = IMG_TRUE;
-	}
-
-	eError = PVRSRVLookupHandle(psPerProc->psHandleBase,
-						   &hDummy,
-						   psSGXDevInitPart2IN->sInitInfo.hKernelVDMCtrlStreamBufferMemInfo,
-						   PVRSRV_HANDLE_TYPE_MEM_INFO);
-	if (eError != PVRSRV_OK)
-	{
-		bLookupFailed = IMG_TRUE;
-	}
-#endif
 #if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
 	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
 	eError = PVRSRVLookupHandle(psPerProc->psHandleBase,
@@ -1428,25 +1446,6 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 		bReleaseFailed = IMG_TRUE;
 	}
 #endif
-#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31559)
-	eError = PVRSRVLookupAndReleaseHandle(psPerProc->psHandleBase,
-						   &psSGXDevInitPart2IN->sInitInfo.hKernelVDMSnapShotBufferMemInfo,
-						   psSGXDevInitPart2IN->sInitInfo.hKernelVDMSnapShotBufferMemInfo,
-						   PVRSRV_HANDLE_TYPE_MEM_INFO);
-	if (eError != PVRSRV_OK)
-	{
-		bReleaseFailed = IMG_TRUE;
-	}
-
-	eError = PVRSRVLookupAndReleaseHandle(psPerProc->psHandleBase,
-						   &psSGXDevInitPart2IN->sInitInfo.hKernelVDMCtrlStreamBufferMemInfo,
-						   psSGXDevInitPart2IN->sInitInfo.hKernelVDMCtrlStreamBufferMemInfo,
-						   PVRSRV_HANDLE_TYPE_MEM_INFO);
-	if (eError != PVRSRV_OK)
-	{
-		bReleaseFailed = IMG_TRUE;
-	}
-#endif
 #if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
 	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
 	eError = PVRSRVLookupAndReleaseHandle(psPerProc->psHandleBase,
@@ -1590,13 +1589,6 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 	bDissociateFailed |= (IMG_BOOL)(eError != PVRSRV_OK);
 #endif
 
-#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31559)
-	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelVDMSnapShotBufferMemInfo);
-	bDissociateFailed |= (IMG_BOOL)(eError != PVRSRV_OK);
-	
-	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelVDMCtrlStreamBufferMemInfo);
-	bDissociateFailed |= (IMG_BOOL)(eError != PVRSRV_OK);
-#endif
 #if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
 	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
 	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelVDMStateUpdateBufferMemInfo);
