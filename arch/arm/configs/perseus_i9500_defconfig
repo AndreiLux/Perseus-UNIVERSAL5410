@@ -77,9 +77,8 @@ CONFIG_AEABI=y
 CONFIG_HIGHMEM=y
 CONFIG_COMPACTION=y
 CONFIG_MIGRATION=y
-# CONFIG_CMDLINE="console=ttySAC2,115200n8 vmalloc=512M androidboot.console=ttySAC2"
-CONFIG_CMDLINE="zswap.enabled=0 zswap.compressor=snappy"
-CONFIG_CMDLINE_FROM_BOOTLOADER=y
+CONFIG_CMDLINE="console=ttySAC2,115200n8 vmalloc=512M androidboot.console=ttySAC2 zswap.enabled=0 zswap.compressor=snappy"
+# CONFIG_CMDLINE_FROM_BOOTLOADER is not set
 CONFIG_CMDLINE_EXTEND=y
 CONFIG_CPU_FREQ=y
 CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND_SEC=y
