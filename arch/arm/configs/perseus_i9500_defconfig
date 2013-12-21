@@ -1,8 +1,5 @@
-CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/gcc-linaro-arm-linux-gnueabihf-4.8-2013.07-1_linux/bin/arm-linux-gnueabihf-"
-# CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/gcc-linaro-arm-linux-gnueabihf-4.7-2013.04-20130415_linux/bin/arm-linux-gnueabihf-"
-# CONFIG_CROSS_COMPILE="/home/af/S4/arm-cortex_a15-linux-gnueabihf/bin/arm-cortex_a15-linux-gnueabihf-"
-# CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/arm-eabi-4.6/bin/arm-eabi-"
-CONFIG_LOCALVERSION="-Perseus.Adonis-alpha14"
+CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/arm-cortex_a8-linux-gnueabi-gearlinaro_4.8.3-2013.11/bin/arm-gnueabi-"
+CONFIG_LOCALVERSION="-Perseus.Adonis-alpha15.2"
 # CONFIG_LOCALVERSION_AUTO is not set
 CONFIG_EXPERIMENTAL=y
 # CONFIG_KERNEL_GZIP is not set
