@@ -1,4 +1,4 @@
-CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/arm-cortex_a8-linux-gnueabi-gearlinaro_4.8.3-2013.11/bin/arm-gnueabi-"
+CONFIG_CROSS_COMPILE="/home/af/S4/Toolchains/arm-cortex_a15-linux-gnueabi-gearlinaro_4.8.3-2013.11/bin/arm-gnueabi-"
 CONFIG_LOCALVERSION="-Perseus.Adonis-alpha15.2"
 # CONFIG_LOCALVERSION_AUTO is not set
 CONFIG_EXPERIMENTAL=y
