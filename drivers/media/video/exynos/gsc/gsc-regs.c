@@ -13,6 +13,7 @@
 
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <linux/runtime_dependency.h>
 #include <mach/map.h>
 #include "gsc-core.h"
 
@@ -477,7 +478,7 @@ void gsc_hw_set_in_image_format(struct gsc_ctx *ctx)
 			cfg |= GSC_IN_YUV422_1P_ORDER_LSB_Y;
 		else
 			cfg |= GSC_IN_YUV422_1P_OEDER_LSB_C;
-		if (frame->fmt->corder == GSC_CBCR)
+		if (frame->fmt->corder == GSC_CBCR && !rt_is_flag(GSC_REORDER))
 			cfg |= GSC_IN_CHROMA_ORDER_CBCR;
 		else
 			cfg |= GSC_IN_CHROMA_ORDER_CRCB;
@@ -487,7 +488,7 @@ void gsc_hw_set_in_image_format(struct gsc_ctx *ctx)
 			cfg |= GSC_IN_YUV420_2P;
 		else
 			cfg |= GSC_IN_YUV422_2P;
-		if (frame->fmt->corder == GSC_CBCR)
+		if (frame->fmt->corder == GSC_CBCR && !rt_is_flag(GSC_REORDER))
 			cfg |= GSC_IN_CHROMA_ORDER_CBCR;
 		else
 			cfg |= GSC_IN_CHROMA_ORDER_CRCB;
@@ -617,7 +618,7 @@ void gsc_hw_set_out_image_format(struct gsc_ctx *ctx)
 			cfg |= GSC_OUT_YUV422_1P_ORDER_LSB_Y;
 		else
 			cfg |= GSC_OUT_YUV422_1P_OEDER_LSB_C;
-		if (frame->fmt->corder == GSC_CBCR)
+		if (frame->fmt->corder == GSC_CBCR && !rt_is_flag(GSC_REORDER))
 			cfg |= GSC_OUT_CHROMA_ORDER_CBCR;
 		else
 			cfg |= GSC_OUT_CHROMA_ORDER_CRCB;
@@ -627,7 +628,7 @@ void gsc_hw_set_out_image_format(struct gsc_ctx *ctx)
 			cfg |= GSC_OUT_YUV420_2P;
 		else
 			cfg |= GSC_OUT_YUV422_2P;
-		if (frame->fmt->corder == GSC_CBCR)
+		if (frame->fmt->corder == GSC_CBCR && !rt_is_flag(GSC_REORDER))
 			cfg |= GSC_OUT_CHROMA_ORDER_CBCR;
 		else
 			cfg |= GSC_OUT_CHROMA_ORDER_CRCB;
