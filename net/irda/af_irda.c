@@ -1450,8 +1450,6 @@ static int irda_recvmsg_stream(struct kiocb *iocb, struct socket *sock,
 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, size);
 	timeo = sock_rcvtimeo(sk, noblock);
 
-	msg->msg_namelen = 0;
-
 	do {
 		int chunk;
 		struct sk_buff *skb = skb_dequeue(&sk->sk_receive_queue);
