@@ -13,13 +13,16 @@
 #include <linux/suspend.h>
 #include <linux/opp.h>
 #include <linux/list.h>
+#include <linux/rculist.h>
 #include <linux/device.h>
+#include <linux/sysfs_helpers.h>
 #include <linux/devfreq.h>
 #include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/pm_qos.h>
 #include <linux/reboot.h>
 #include <linux/kobject.h>
+#include <linux/errno.h>
 
 #include <plat/pll.h>
 #include <mach/regs-clock.h>
@@ -911,6 +914,64 @@ static ssize_t show_freq_table(struct device *dev, struct device_attribute *attr
 
 static DEVICE_ATTR(freq_table, S_IRUGO, show_freq_table, NULL);
 
+static ssize_t show_volt_table(struct device *device,
+		struct device_attribute *attr, char *buf)
+{	
+	struct device_opp *dev_opp = ERR_PTR(-ENODEV);
+	struct opp *temp_opp;
+	int len = 0;
+
+	dev_opp = find_device_opp(int_dev);
+
+	list_for_each_entry_rcu(temp_opp, &dev_opp->opp_list, node) {
+		if (temp_opp->available)
+			len += sprintf(buf + len, "%lu %lu\n",
+					opp_get_freq(temp_opp),
+					opp_get_voltage(temp_opp));
+	}
+
+	return len;
+}
+
+static ssize_t store_volt_table(struct device *device,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct device_opp *dev_opp = find_device_opp(int_dev);
+	struct opp *temp_opp;
+	int u[LV_END];
+	int rest, t, i = 0;
+
+	if ((t = read_into((int*)&u, LV_END, buf, count)) < 0)
+		return -EINVAL;
+
+	if (t == 2 && LV_END != 2) {
+		temp_opp = opp_find_freq_exact(int_dev, u[0], true);
+		if(IS_ERR(temp_opp))
+			return -EINVAL;
+
+		if ((rest = (u[1] % 6250)) != 0)
+			u[1] += 6250 - rest;
+
+		sanitize_min_max(u[1], 600000, 1400000);
+		temp_opp->u_volt = u[1];
+	} else {
+		list_for_each_entry_rcu(temp_opp, &dev_opp->opp_list, node) {
+			if (temp_opp->available) {
+				if ((rest = (u[i] % 6250)) != 0)
+					u[i] += 6250 - rest;
+
+				sanitize_min_max(u[i], 600000, 1400000);
+				temp_opp->u_volt = u[i++];
+			}
+		}
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(volt_table, S_IRUGO | S_IWUSR, show_volt_table, store_volt_table);
+
 static ssize_t show_en_monitoring(struct device *dev, struct device_attribute *attr,
 				  char *buf)
 {
@@ -1064,6 +1125,11 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 
 	/* Add sysfs for freq_table */
 	err = device_create_file(&data->devfreq->dev, &dev_attr_freq_table);
+	if (err)
+		pr_err("%s: Fail to create sysfs file\n", __func__);
+
+	/* Add sysfs for volt_table */
+	err = device_create_file(&data->devfreq->dev, &dev_attr_volt_table);
 	if (err)
 		pr_err("%s: Fail to create sysfs file\n", __func__);
 
