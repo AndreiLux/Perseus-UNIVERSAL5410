@@ -34,6 +34,12 @@
 #include "exynos5410_volt_ctrl.h"
 
 #define INT_PANIC_FREQ	200000
+#define SAFE_VOLT(x)		(x + 25000)
+
+struct exynos5_volt_info exynos5_vdd_int = {
+	.idx	= VDD_INT,
+};
+
 struct delayed_work do_panic;
 
 static unsigned int exynos_int_cur_freq;
@@ -539,17 +545,11 @@ static int exynos5_int_busfreq_target(struct device *dev,
 	 * after change voltage, setting freq ratio
 	 */
 	if (old_freq < freq) {
-		err = exynos5_volt_ctrl(VDD_INT, target_volt, freq);
-		if (err)
-			goto out;
-
+		regulator_set_voltage(exynos5_vdd_int.vdd_target, target_volt, SAFE_VOLT(target_volt));
 		exynos5_int_set_freq(freq, old_freq);
 	} else {
 		exynos5_int_set_freq(freq, old_freq);
-
-		err = exynos5_volt_ctrl(VDD_INT, target_volt, freq);
-		if (err)
-			goto out;
+		regulator_set_voltage(exynos5_vdd_int.vdd_target, target_volt, SAFE_VOLT(target_volt));
 	}
 
 	data->curr_opp = opp;
@@ -666,15 +666,14 @@ static int exynos5410_init_int_table(struct busfreq_data_int *data)
 	/* will add code for ASV information setting function in here */
 
 	for (i = 0; i < ARRAY_SIZE(int_bus_opp_list); i++) {
-		asv_volt = get_match_volt(ID_INT_MIF_L0, int_bus_opp_list[i].clk);
+		asv_volt = get_match_volt(ID_INT_MIF_L1, int_bus_opp_list[i].clk);
 
 		if (!asv_volt)
 			asv_volt = int_bus_opp_list[i].volt;
 
 		pr_info("INT %luKhz ASV is %duV\n", int_bus_opp_list[i].clk, asv_volt);
 
-		ret = opp_add(data->dev, int_bus_opp_list[i].clk,
-				get_match_volt(ID_INT_MIF_L0, int_bus_opp_list[i].clk));
+		ret = opp_add(data->dev, int_bus_opp_list[i].clk, asv_volt);
 
 		if (ret) {
 			dev_err(data->dev, "Fail to add opp entries.\n");
@@ -1082,6 +1081,17 @@ static __devinit int exynos5_busfreq_int_probe(struct platform_device *pdev)
 		dev_err(dev, "Cannot allocate memory for INT.\n");
 		return -ENOMEM;
 	}
+
+	/* INT Setting regulator inform */
+	exynos5_vdd_int.vdd_target = regulator_get(NULL, "vdd_int");
+
+	if (IS_ERR(exynos5_vdd_int.vdd_target)) {
+		pr_err("Cannot get the regulator vdd_int\n");
+		err = PTR_ERR(exynos5_vdd_int.vdd_target);
+	}
+
+	exynos5_vdd_int.set_volt = regulator_get_voltage(exynos5_vdd_int.vdd_target);
+	exynos5_vdd_int.target_volt = exynos5_vdd_int.set_volt;
 
 	data->dev = dev;
 	mutex_init(&data->lock);

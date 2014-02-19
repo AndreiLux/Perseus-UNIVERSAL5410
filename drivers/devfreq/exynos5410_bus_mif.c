@@ -38,14 +38,17 @@
 #include "noc_probe.h"
 #include "exynos5410_volt_ctrl.h"
 
-#ifdef CONFIG_ASV_MARGIN_TEST
-static int set_mif_freq = 0;
-static int __init get_mif_freq(char *str)
-{
-	get_option(&str, &set_mif_freq);
-	return 0;
-}
-early_param("miffreq", get_mif_freq);
+#define MIF_VOLT_STEP		12500
+#define SAFE_VOLT(x)		(x + 25000)
+
+struct exynos5_volt_info exynos5_vdd_mif = {
+	.idx	= VDD_MIF,
+};
+
+#if defined(CONFIG_REGULATOR_S2MPS11)
+struct exynos5_volt_info exynos5_vdd_memio = {
+	.idx	= VDD_MEMIO,
+};
 #endif
 
 static bool en_profile = false;
@@ -574,10 +577,7 @@ static int exynos5_mif_busfreq_target(struct device *dev,
 	 * after change voltage, setting freq ratio
 	 */
 	if (old_freq < freq) {
-		err = exynos5_volt_ctrl(VDD_MIF, target_volt, freq);
-
-		if (err)
-			goto out;
+		regulator_set_voltage(exynos5_vdd_mif.vdd_target, target_volt, SAFE_VOLT(target_volt));
 
 		exynos5_mif_set_drex(freq);
 
@@ -597,11 +597,22 @@ static int exynos5_mif_busfreq_target(struct device *dev,
 
 		exynos5_mif_set_drex(freq);
 
-		err = exynos5_volt_ctrl(VDD_MIF, target_volt, freq);
-
-		if (err)
-			goto out;
+		regulator_set_voltage(exynos5_vdd_mif.vdd_target, target_volt, SAFE_VOLT(target_volt));
 	}
+
+#if defined(CONFIG_TARGET_LOCALE_EUR) && defined(CONFIG_REGULATOR_S2MPS11)
+	if (system_rev == 0xa) {
+		if (freq == 800000) {
+			exynos5_vdd_memio.set_volt = 1250000; /* increase 50mV for Mem IO */
+			regulator_set_voltage(exynos5_vdd_memio.vdd_target,
+					exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
+		} else {
+			exynos5_vdd_memio.set_volt = 1200000;
+			regulator_set_voltage(exynos5_vdd_memio.vdd_target,
+					exynos5_vdd_memio.set_volt, SAFE_VOLT(exynos5_vdd_memio.set_volt));
+		}
+	}
+#endif
 
 	bts_change_bustraffic(&info, MIF_DEVFREQ_POSTCHANGE);
 
@@ -1216,6 +1227,30 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	/* MIF Setting regulator inform */
+	exynos5_vdd_mif.vdd_target = regulator_get(NULL, "vdd_mif");
+
+	if (IS_ERR(exynos5_vdd_mif.vdd_target)) {
+		pr_err("Cannot get the regulator vdd_mif\n");
+		err = PTR_ERR(exynos5_vdd_mif.vdd_target);
+	}
+
+	exynos5_vdd_mif.set_volt = regulator_get_voltage(exynos5_vdd_mif.vdd_target);
+	exynos5_vdd_mif.target_volt = exynos5_vdd_mif.set_volt;
+
+#if defined(CONFIG_REGULATOR_S2MPS11)
+	/* MEMIO Setting regulator inform */
+	exynos5_vdd_memio.vdd_target = regulator_get(NULL, "vdd_mem2");
+
+	if (IS_ERR(exynos5_vdd_memio.vdd_target)) {
+		pr_err("Cannot get the regulator vdd_mem2\n");
+		err = PTR_ERR(exynos5_vdd_memio.vdd_target);
+	}
+
+	exynos5_vdd_memio.set_volt = regulator_get_voltage(exynos5_vdd_memio.vdd_target);
+	exynos5_vdd_memio.target_volt = exynos5_vdd_memio.set_volt;
+#endif
+
 	/* Enable pause function for DREX2 DVFS */
 	tmp = __raw_readl(EXYNOS5_DMC_PAUSE_CTRL);
 	tmp |= EXYNOS5_DMC_PAUSE_ENABLE;
@@ -1310,7 +1345,8 @@ static __devinit int exynos5_busfreq_mif_probe(struct platform_device *pdev)
 
 	pr_info("init_volt[%d], freq[%lu]\n", init_volt, data->devfreq->max_freq);
 
-	err = exynos5_volt_ctrl(VDD_MIF, init_volt, data->devfreq->max_freq);
+	regulator_set_voltage(exynos5_vdd_mif.vdd_target, init_volt, SAFE_VOLT(init_volt));
+
 	__raw_writel(((dll_lock_and_forcing(phy1_base) & 0x7f) << 16) |
 					((dll_lock_and_forcing(phy0_base) & 0x7f)), EXYNOS_PMU_SPARE1);
 
