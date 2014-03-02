@@ -235,6 +235,10 @@ typedef struct rndis_params
 	struct net_device	*dev;
 
 	u32			vendorID;
+#ifdef CONFIG_USB_RNDIS_MULTI_PACKET
+	u8			max_pkt_per_xfer;
+	u8			pkt_alignment_factor;
+#endif
 	const char		*vendorDescr;
 	void			(*resp_avail)(void *v);
 	void			*v;
@@ -250,6 +254,9 @@ int  rndis_set_param_dev (u8 configNr, struct net_device *dev,
 int  rndis_set_param_vendor (u8 configNr, u32 vendorID,
 			    const char *vendorDescr);
 int  rndis_set_param_medium (u8 configNr, u32 medium, u32 speed);
+#ifdef CONFIG_USB_RNDIS_MULTI_PACKET
+void rndis_set_max_pkt_xfer(u8 configNr, u8 max_pkt_per_xfer);
+#endif
 void rndis_add_hdr (struct sk_buff *skb);
 int rndis_rm_hdr(struct gether *port, struct sk_buff *skb,
 			struct sk_buff_head *list);

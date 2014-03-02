@@ -81,6 +81,7 @@ endif
 obj-$(CONFIG_SAMSUNG_MHL_8240)		+= board-universal5410-mhl.o
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-vibrator.o
 obj-$(CONFIG_MACH_JA)				+= board-universal5410-gpio.o
+obj-$(CONFIG_SEC_GPIO_DVS)			+= board-universal5410-gpiodvs.o
 
 ifeq ($(CONFIG_EXYNOS_C2C),y)
 obj-$(CONFIG_MACH_UNIVERSAL5410)	+= board-universal5410-c2c.o

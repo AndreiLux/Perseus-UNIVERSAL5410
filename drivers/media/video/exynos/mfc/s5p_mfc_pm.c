@@ -268,6 +268,11 @@ int s5p_mfc_power_off(void)
 	return pm_runtime_put_sync(pm->device);
 }
 
+int s5p_mfc_get_power_ref_cnt(void)
+{
+	return atomic_read(&pm->power);
+}
+
 int s5p_mfc_get_clk_ref_cnt(void)
 {
 	return atomic_read(&clk_ref);

@@ -37,6 +37,8 @@ struct s2mps11_rtc_info {
 	bool lpm_mode;
 	bool alarm_irq_flag;
 	struct wake_lock alarm_wake_lock;
+	struct workqueue_struct*  sapa_workq;
+	struct delayed_work       sapa_reboot_work;
 #endif
 	int rtc_24hr_mode;
 	bool wtsr_smpl;
@@ -487,6 +489,13 @@ static irqreturn_t s2mps11_rtc_alarm_irq(int irq, void *data)
 }
 
 #if defined(CONFIG_RTC_ALARM_BOOT)
+static void sapa_reboot(struct work_struct *work)
+{
+	//machine_restart(NULL);
+	kernel_restart(NULL);
+	//panic("Test panic");
+}
+
 static irqreturn_t s2mps11_rtc_alarm1_irq(int irq, void *data)
 {
 	struct s2mps11_rtc_info *info = data;
@@ -497,6 +506,9 @@ static irqreturn_t s2mps11_rtc_alarm1_irq(int irq, void *data)
 	if (info->lpm_mode) {
 		wake_lock(&info->alarm_wake_lock);
 		info->alarm_irq_flag = true;
+		if (info->sapa_workq) { 
+			queue_delayed_work(info->sapa_workq, &info->sapa_reboot_work, (1*HZ));
+		}
 	}
 
 	rtc_update_irq(info->rtc_dev, 1, RTC_IRQF | RTC_AF);
@@ -725,9 +737,18 @@ static int __devinit s2mps11_rtc_probe(struct platform_device *pdev)
 			s2mps11->irq1, ret);
 
 	s2mps11->lpm_mode = lpcharge;
-	if(s2mps11->lpm_mode)
+	if(s2mps11->lpm_mode) {
 		wake_lock_init(&s2mps11->alarm_wake_lock, WAKE_LOCK_SUSPEND,
 												"alarm_wake_lock");
+
+		s2mps11->sapa_workq = create_singlethread_workqueue("pwron_alarm_resume");
+		if (s2mps11->sapa_workq == NULL) {
+			pr_err("[SAPA] pwron_alarm work creating failed\n");
+		}
+		else {
+			INIT_DELAYED_WORK(&s2mps11->sapa_reboot_work, sapa_reboot);
+		}
+	}
 #endif
 
 	return 0;

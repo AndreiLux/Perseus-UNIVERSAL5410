@@ -60,7 +60,7 @@
 #define NR_TO_RECLAIM_PAGES 		(1024*2) /* 8MB, include file pages */
 #define MIN_FREESWAP_PAGES 		(NR_TO_RECLAIM_PAGES*2*NR_CPUS)
 #define MIN_RECLAIM_PAGES 		(NR_TO_RECLAIM_PAGES/8)
-#define MIN_CSWAP_INTERVAL 		(10*HZ) /* 10 senconds */
+#define MIN_CSWAP_INTERVAL 		(5*HZ) /* 5 senconds */
 #else /* CONFIG_SMP */
 #define NR_TO_RECLAIM_PAGES 		1024 /* 4MB, include file pages */
 #define MIN_FREESWAP_PAGES 		(NR_TO_RECLAIM_PAGES*2)
@@ -946,10 +946,13 @@ static int do_compcache(void * nothing)
 		if (kthread_should_stop())
 			break;
 
-		if (rtcc_reclaim_pages(number_of_reclaim_pages) < minimum_reclaim_pages)
-			cancel_soft_reclaim();
+		if (atomic_read(&s_reclaim.kcompcached_running) == 1) {
+			if (rtcc_reclaim_pages(number_of_reclaim_pages) < minimum_reclaim_pages)
+				cancel_soft_reclaim();
 
-		atomic_set(&s_reclaim.kcompcached_running, 0);
+			atomic_set(&s_reclaim.kcompcached_running, 0);
+		}
+
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule();
 	}

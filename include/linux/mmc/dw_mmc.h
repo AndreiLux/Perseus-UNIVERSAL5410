@@ -19,6 +19,7 @@
 #include <linux/pm_qos.h>
 
 #define MAX_MCI_SLOTS	2
+#define MAX_TUNING_RETRIES	4
 
 enum dw_mci_state {
 	STATE_IDLE = 0,
@@ -236,6 +237,8 @@ struct dw_mci_dma_ops {
 #define DW_MMC_QUIRK_HW_RESET_PW 		BIT(5)
 /* No use voltage switch interrupt */
 #define DW_MMC_QUIRK_NO_VOLSW_INT 		BIT(6)
+/* Use fine tuning for eMMC */
+#define DW_MMC_QUIRK_USE_FINE_TUNING		BIT(7)
 
 enum dw_mci_cd_types {
 	DW_MCI_CD_INTERNAL,	/* use mmc internal CD line */
@@ -297,10 +300,13 @@ struct dw_mci_board {
 	int (*get_bus_wd)(u32 slot_id);
 	void (*cfg_gpio)(int width);
 	void (*hw_reset)(u32 slot_id);
-	void (*set_io_timing)(void *data, unsigned char timing);
+	void (*set_io_timing)(void *data, unsigned int tuning, unsigned char timing);
 	void (*save_drv_st)(void *data, u32 slot_id);
 	void (*restore_drv_st)(void *data, u32 slot_id, int *compensation);
 	void (*tuning_drv_st)(void *data, u32 slot_id);
+
+	/* If necessary, add to the extra tuning */
+	s8 (*extra_tuning)(u8 map);
 
 	/* Phase Shift Value */
 	unsigned int sdr_timing;
@@ -308,6 +314,7 @@ struct dw_mci_board {
 	unsigned int ddr200_timing;
 	u8 clk_drv;
 	u8 clk_smpl;
+	bool is_fine_tuned;
 	bool tuned;
 	bool only_once_tune;
 	struct drv_strength {
@@ -349,6 +356,7 @@ struct dw_mci_board {
 	struct dw_mci_clk *clk_tbl;
 	struct dw_mci_mon_table *tp_mon_tbl;
 	unsigned int sw_timeout;
+	u16 tuning_map[MAX_TUNING_RETRIES];
 #if defined(CONFIG_MACH_UNIVERSAL5410)
 	unsigned char	prev_power_mode;		/* saved power mode */
 	void (*set_sd_power)(u32 enable);

@@ -1115,23 +1115,30 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		 * 3. set the clock to > 52Mhz <=200MHz and
 		 * 4. execute tuning for HS200
 		 */
+
+		ddr = ((card->ext_csd.card_type & EXT_CSD_CARD_TYPE_DDR_200_1_2V &&
+				host->caps2 & MMC_CAP2_HS200_1_2V_DDR) ||
+			(card->ext_csd.card_type & EXT_CSD_CARD_TYPE_DDR_200_1_8V &&
+				 host->caps2 & MMC_CAP2_HS200_1_8V_DDR)) ? 1 : 0;
+
 		if (card->host->ops->execute_tuning) {
+			host->tuning_progress |= MMC_HS200_TUNING;
 			mmc_host_clk_hold(card->host);
+			if (ddr) {
+				host->tuning_progress |= MMC_DDR200_TUNING;
+				mmc_set_timing(card->host, MMC_TIMING_MMC_HS200_DDR);
+				mmc_set_clock(host, MMC_HS200_MAX_DTR);
+			}
 			err = card->host->ops->execute_tuning(card->host,
 				MMC_SEND_TUNING_BLOCK_HS200);
 			mmc_host_clk_release(card->host);
-
+			host->tuning_progress = 0;
 			if (err) {
 				pr_warning("%s: tuning execution failed\n",
 						mmc_hostname(card->host));
 				goto err;
 			}
 		}
-
-		ddr = ((card->ext_csd.card_type & EXT_CSD_CARD_TYPE_DDR_200_1_2V &&
-				host->caps2 & MMC_CAP2_HS200_1_2V_DDR) ||
-			(card->ext_csd.card_type & EXT_CSD_CARD_TYPE_DDR_200_1_8V &&
-				 host->caps2 & MMC_CAP2_HS200_1_8V_DDR)) ? 1 : 0;
 
 		ext_csd_bits = (bus_width == MMC_BUS_WIDTH_8) ?
 				EXT_CSD_BUS_WIDTH_8 : EXT_CSD_BUS_WIDTH_4;
@@ -1351,7 +1358,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 
 	/* if it is from resume. check bkops mode */
 	if (oldcard) {
-		if (oldcard->bkops_enable) {
+		if (oldcard->bkops_enable & 0xFE) {
 			/*
 			 * if bkops mode is enable before getting suspend.
 			 * turn on the bkops mode

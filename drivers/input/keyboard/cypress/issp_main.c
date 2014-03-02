@@ -988,7 +988,7 @@ this data should come from the HEX output of PSoC Designer.*/
 	if ((unsigned short)(iChecksumTarget & 0xffff) !=
 	    (unsigned short)(iChecksumData & 0xffff)) {
 		ErrorTrap(VERIFY_ERROR);
-		return fIsError;
+		return VERIFY_ERROR;
 	}
 	/*printk(KERN_DEBUG"Doing Checksum END\n");*/
 

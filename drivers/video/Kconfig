@@ -2064,6 +2064,11 @@ config FB_MIPI_DSIM
 	---help---
 	  This enables support for Samsung MIPI DSIM feature
 
+config FB_MIPI_DSIM_DBG
+	bool "Support MIPI DSIM_DEBUG"
+	depends on FB_MIPI_DSIM
+	default n
+
 config FB_I80_COMMAND_MODE
 	bool "Samsung MIPI DSI command mode"
 	depends on FB_MIPI_DSIM

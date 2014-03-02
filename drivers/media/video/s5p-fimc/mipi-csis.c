@@ -288,6 +288,90 @@ err:
 	return -ENXIO;
 }
 
+static void s5pcsis_start_stream(struct csis_state *state)
+{
+	s5pcsis_reset(state);
+	s5pcsis_set_params(state);
+	s5pcsis_system_enable(state, true);
+	s5pcsis_enable_interrupts(state, true);
+}
+
+static void s5pcsis_stop_stream(struct csis_state *state)
+{
+	s5pcsis_enable_interrupts(state, false);
+	s5pcsis_system_enable(state, false);
+}
+
+static int s5pcsis_pm_suspend(struct device *dev, bool runtime)
+{
+	struct s5p_platform_mipi_csis *pdata = dev->platform_data;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct v4l2_subdev *sd = platform_get_drvdata(pdev);
+	struct csis_state *state = sd_to_csis_state(sd);
+	int ret = 0;
+
+	v4l2_dbg(1, debug, sd, "%s: flags: 0x%x\n",
+		 __func__, state->flags);
+
+	mutex_lock(&state->lock);
+	if (state->flags & ST_POWERED) {
+		s5pcsis_stop_stream(state);
+		ret = pdata->phy_enable(state->pdev->id, false);
+		if (ret)
+			goto unlock;
+		ret = regulator_bulk_disable(CSIS_NUM_SUPPLIES,
+					     state->supplies);
+		if (ret)
+			goto unlock;
+		clk_disable(state->clock[CSIS_CLK_GATE]);
+		state->flags &= ~ST_POWERED;
+		if (!runtime)
+			state->flags |= ST_SUSPENDED;
+	}
+unlock:
+	mutex_unlock(&state->lock);
+	return ret ? -EAGAIN : 0;
+}
+
+static int s5pcsis_pm_resume(struct device *dev, bool runtime)
+{
+	struct s5p_platform_mipi_csis *pdata = dev->platform_data;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct v4l2_subdev *sd = platform_get_drvdata(pdev);
+	struct csis_state *state = sd_to_csis_state(sd);
+	int ret = 0;
+
+	v4l2_dbg(1, debug, sd, "%s: flags: 0x%x\n",
+		 __func__, state->flags);
+
+	mutex_lock(&state->lock);
+	if (!runtime && !(state->flags & ST_SUSPENDED))
+		goto unlock;
+
+	if (!(state->flags & ST_POWERED)) {
+		ret = regulator_bulk_enable(CSIS_NUM_SUPPLIES,
+					    state->supplies);
+		if (ret)
+			goto unlock;
+		ret = pdata->phy_enable(state->pdev->id, true);
+		if (!ret) {
+			state->flags |= ST_POWERED;
+		} else {
+			regulator_bulk_disable(CSIS_NUM_SUPPLIES,
+					       state->supplies);
+			goto unlock;
+		}
+		clk_enable(state->clock[CSIS_CLK_GATE]);
+	}
+	if (state->flags & ST_STREAMING)
+		s5pcsis_start_stream(state);
+
+	state->flags &= ~ST_SUSPENDED;
+unlock:
+	mutex_unlock(&state->lock);
+	return ret ? -EAGAIN : 0;
+}
+
 static int s5pcsis_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct csis_state *state = sd_to_csis_state(sd);

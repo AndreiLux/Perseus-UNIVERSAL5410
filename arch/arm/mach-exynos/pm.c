@@ -41,6 +41,10 @@
 #include <mach/pmu.h>
 #include <mach/smc.h>
 
+#ifdef CONFIG_SEC_GPIO_DVS
+#include <linux/secgpio_dvs.h>
+#endif
+
 #ifdef CONFIG_SEC_PM
 void (*exynos_set_sleep_gpio_table)(void);
 void (*exynos_debug_show_gpio)(void);
@@ -140,6 +144,15 @@ static void exynos_clkgate_ctrl(bool on)
 
 static int exynos_cpu_suspend(unsigned long arg)
 {
+#ifdef CONFIG_SEC_GPIO_DVS
+	/************************ Caution !!! ****************************/
+	/* This function must be located in appropriate SLEEP position
+	 * in accordance with the specification of each BB vendor.
+	 */
+	/************************ Caution !!! ****************************/
+	gpio_dvs_check_sleepgpio();
+#endif
+
 #ifdef CONFIG_CACHE_L2X0
 	outer_flush_all();
 #endif

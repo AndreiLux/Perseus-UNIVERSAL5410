@@ -853,6 +853,21 @@ static int sec_chg_set_property(struct power_supply *psy,
 				if (set_charging_current > SIOP_CHARGING_LIMIT_CURRENT)
 					set_charging_current = SIOP_CHARGING_LIMIT_CURRENT;
 			}
+
+			if (charger->cable_type ==
+				POWER_SUPPLY_TYPE_UARTOFF) {
+				u8 reg_data;
+
+				max77803_read_reg(charger->max77803->muic,
+					MAX77803_MUIC_REG_CDETCTRL2,
+					&reg_data);
+				reg_data |= (0x01 << 0);
+				max77803_write_reg(charger->max77803->muic,
+					MAX77803_MUIC_REG_CDETCTRL2,
+					reg_data);
+
+				pr_info("ForceCharging for UARTOFF_VB\n");
+			}
 		}
 		max77803_set_charger_state(charger, charger->is_charging);
 		/* if battery full, only disable charging  */

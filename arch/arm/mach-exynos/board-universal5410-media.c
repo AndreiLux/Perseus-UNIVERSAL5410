@@ -38,6 +38,10 @@
 #include <media/exynos_fimc_is_sensor.h>
 #include "board-universal5410.h"
 
+#ifdef CONFIG_SEC_GPIO_DVS
+#include <linux/secgpio_dvs.h>
+#endif
+
 #ifdef CONFIG_VIDEO_EXYNOS_FIMC_LITE
 /* 1 MIPI Cameras */
 #ifdef CONFIG_VIDEO_M5MOLS
@@ -320,6 +324,20 @@ static struct fimg2d_platdata fimg2d_data __initdata = {
 	.gate_clkname	= "fimg2d",
 };
 #endif
+
+/* This funtion will be init breakpoint for GPIO verification */
+static void gpio_init_done(void)
+{
+	pr_info("%s\n", __func__);
+#ifdef CONFIG_SEC_GPIO_DVS
+	/************************ Caution !!! ****************************/
+	/* This function must be located in appropriate INIT position
+	 * in accordance with the specification of each BB vendor.
+	 */
+	/************************ Caution !!! ****************************/
+	gpio_dvs_check_initgpio();
+#endif
+}
 
 static struct platform_device *universal5410_media_devices[] __initdata = {
 #if defined (CONFIG_CSI_D) || defined (CONFIG_S5K6B2_CSI_D)
@@ -870,6 +888,9 @@ static void __init universal5410_set_camera_platdata(void)
 
 void __init exynos5_universal5410_media_init(void)
 {
+	/* GPIO init check point */ 
+	gpio_init_done();
+
 #if defined (CONFIG_CSI_D) || defined (CONFIG_S5K6B2_CSI_D)
 	s3c_i2c1_set_platdata(NULL);
 #endif

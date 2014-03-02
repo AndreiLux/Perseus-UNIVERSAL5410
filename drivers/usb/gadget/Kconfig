@@ -908,6 +908,13 @@ config USB_ANDROID_SAMSUNG_MTP
 	  If you enable this option,
 	  google mtp will be changed to samsung mtp.
 
+config USB_RNDIS_MULTI_PACKET
+	boolean "RNDIS multi packet support"
+	depends on USB_G_ANDROID
+	default n
+	help
+	  data aggregation support using RNDIS Multi Packet feature
+
 config USB_DUN_SUPPORT
 	boolean "DUN support function"
 	depends on USB_G_ANDROID

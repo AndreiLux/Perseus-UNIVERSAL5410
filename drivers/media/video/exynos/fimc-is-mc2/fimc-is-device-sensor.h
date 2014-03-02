@@ -94,6 +94,6 @@ int fimc_is_sensor_back_stop(struct fimc_is_device_sensor *device);
 int fimc_is_sensor_back_pause(struct fimc_is_device_sensor *device);
 void fimc_is_sensor_back_restart(struct fimc_is_device_sensor *device);
 
-int enable_mipi(void);
+int enable_mipi(bool enable);
 
 #endif

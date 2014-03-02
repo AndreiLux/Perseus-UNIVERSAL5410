@@ -3412,7 +3412,7 @@ static void boost_level(void)
 
 	set_default_result(data);
 
-	if (data->cmd_param[0] < 0 || data->cmd_param[0] > 2) {
+	if (data->cmd_param[0] < 0 || data->cmd_param[0] >= TSP_BOOSTER_LEVEL_MAX) {
 		snprintf(data->cmd_buff, sizeof(data->cmd_buff), "NG");
 		data->cmd_state = CMD_STATUS_FAIL;
 	} else {

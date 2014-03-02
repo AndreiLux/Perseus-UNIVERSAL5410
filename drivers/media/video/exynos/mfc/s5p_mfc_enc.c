@@ -837,6 +837,24 @@ static struct v4l2_queryctrl controls[] = {
 		.step = 10,
 		.default_value = 100,
 	},
+	{
+		.id = V4L2_CID_MPEG_MFC_GET_VERSION_INFO,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Get MFC version information",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC_GET_EXT_INFO,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Get extra information",
+		.minimum = INT_MIN,
+		.maximum = INT_MAX,
+		.step = 1,
+		.default_value = 0,
+	},
 };
 
 #define NUM_CTRLS ARRAY_SIZE(controls)
@@ -1063,6 +1081,23 @@ static int enc_cleanup_ctx_ctrls(struct s5p_mfc_ctx *ctx)
 	}
 
 	INIT_LIST_HEAD(&ctx->ctrls);
+
+	return 0;
+}
+
+static int enc_get_buf_update_val(struct s5p_mfc_ctx *ctx,
+			struct list_head *head, unsigned int id, int value)
+{
+	struct s5p_mfc_buf_ctrl *buf_ctrl;
+
+	list_for_each_entry(buf_ctrl, head, list) {
+		if ((buf_ctrl->id == id)) {
+			buf_ctrl->val = value;
+			mfc_debug(5, "++id: 0x%08x val: %d\n",
+					buf_ctrl->id, buf_ctrl->val);
+			break;
+		}
+	}
 
 	return 0;
 }
@@ -1336,6 +1371,7 @@ static int enc_to_ctx_ctrls(struct s5p_mfc_ctx *ctx, struct list_head *head)
 static int enc_set_buf_ctrls_val(struct s5p_mfc_ctx *ctx, struct list_head *head)
 {
 	struct s5p_mfc_buf_ctrl *buf_ctrl;
+	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	unsigned int value = 0;
 
 	list_for_each_entry(buf_ctrl, head, list) {
@@ -1374,6 +1410,9 @@ static int enc_set_buf_ctrls_val(struct s5p_mfc_ctx *ctx, struct list_head *head
 
 		buf_ctrl->has_new = 0;
 		buf_ctrl->updated = 1;
+
+		if (buf_ctrl->id == V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG)
+			enc->stored_tag = buf_ctrl->val;
 
 		mfc_debug(8, "Set buffer control "\
 				"id: 0x%08x val: %d\n",
@@ -1613,7 +1652,7 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 
 	spin_lock_irqsave(&dev->irqlock, flags);
 
-	if (strm_size > 0) {
+	if (strm_size > 0 || ctx->state == MFCINST_FINISHING) {
 		/* at least one more dest. buffers exist always  */
 		mb_entry = list_entry(ctx->dst_queue.next, struct s5p_mfc_buf, list);
 
@@ -1650,6 +1689,12 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 		if (call_cop(ctx, get_buf_ctrls_val, ctx, &ctx->dst_ctrls[index]) < 0)
 			mfc_err("failed in get_buf_ctrls_val\n");
 
+		if (strm_size == 0 && ctx->state == MFCINST_FINISHING)
+			call_cop(ctx, get_buf_update_val, ctx,
+				&ctx->dst_ctrls[index],
+				V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG,
+				enc->stored_tag);
+
 		vb2_buffer_done(&mb_entry->vb, VB2_BUF_STATE_DONE);
 	}
 
@@ -1665,7 +1710,8 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 		return 0;
 	}
 
-	if (slice_type >= 0) {
+	if (slice_type >= 0 &&
+			ctx->state != MFCINST_FINISHING) {
 		if (ctx->state == MFCINST_RUNNING_NO_OUTPUT)
 			ctx->state = MFCINST_RUNNING;
 
@@ -1721,6 +1767,13 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 				break;
 			}
 		}
+	} else if (ctx->state == MFCINST_FINISHING) {
+		mb_entry = list_entry(ctx->src_queue.next,
+						struct s5p_mfc_buf, list);
+		list_del(&mb_entry->list);
+		ctx->src_queue_cnt--;
+
+		vb2_buffer_done(&mb_entry->vb, VB2_BUF_STATE_DONE);
 	}
 
 	if ((ctx->src_queue_cnt > 0) &&
@@ -1757,7 +1810,7 @@ static int enc_post_frame_start(struct s5p_mfc_ctx *ctx)
 }
 
 static struct s5p_mfc_codec_ops encoder_codec_ops = {
-	.get_buf_update_val	= NULL,
+	.get_buf_update_val	= enc_get_buf_update_val,
 	.init_ctx_ctrls		= enc_init_ctx_ctrls,
 	.cleanup_ctx_ctrls	= enc_cleanup_ctx_ctrls,
 	.init_buf_ctrls		= enc_init_buf_ctrls,
@@ -2339,6 +2392,14 @@ static int vidioc_queryctrl(struct file *file, void *priv,
 	return 0;
 }
 
+static int enc_ext_info(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	int val = 0;
+
+	return val;
+}
+
 static int get_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
@@ -2398,6 +2459,12 @@ static int get_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 		break;
 	case V4L2_CID_MPEG_VIDEO_QOS_RATIO:
 		ctrl->value = ctx->qos_ratio;
+		break;
+	case V4L2_CID_MPEG_MFC_GET_VERSION_INFO:
+		ctrl->value = mfc_version(dev);
+		break;
+	case V4L2_CID_MPEG_MFC_GET_EXT_INFO:
+		ctrl->value = enc_ext_info(ctx);
 		break;
 	default:
 		v4l2_err(&dev->v4l2_dev, "Invalid control: 0x%08x\n", ctrl->id);
@@ -3364,17 +3431,8 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 
 		spin_lock_irqsave(&dev->irqlock, flags);
 
-		if (vb->v4l2_planes[0].bytesused == 0) {
-			mfc_debug(1, "change state to FINISHING\n");
-			ctx->state = MFCINST_FINISHING;
-
-			vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
-
-			cleanup_ref_queue(ctx);
-		} else {
-			list_add_tail(&buf->list, &ctx->src_queue);
-			ctx->src_queue_cnt++;
-		}
+		list_add_tail(&buf->list, &ctx->src_queue);
+		ctx->src_queue_cnt++;
 
 		spin_unlock_irqrestore(&dev->irqlock, flags);
 	} else {

@@ -78,7 +78,7 @@ struct idmac_desc {
 };
 #endif /* CONFIG_MMC_DW_IDMAC */
 
-#define MAX_TUNING_LOOP	40
+#define MAX_TUNING_LOOP	(MAX_TUNING_RETRIES * 8 * 2)
 static const u8 tuning_blk_pattern_4bit[] = {
 	0xff, 0x0f, 0xff, 0x00, 0xff, 0xcc, 0xc3, 0xcc,
 	0xc3, 0x3c, 0xcc, 0xff, 0xfe, 0xff, 0xfe, 0xef,
@@ -1067,7 +1067,8 @@ static void dw_mci_setup_bus(struct dw_mci_slot *slot, int force)
 					"Actual clock is high than a reqeust clock."
 					"Source clock is needed to change\n");
 				reset_div = true;
-				slot->host->pdata->set_io_timing(slot->host, MMC_TIMING_LEGACY);
+				slot->host->pdata->set_io_timing(slot->host,
+							0, MMC_TIMING_LEGACY);
 			} else
 				reset_div = false;
 		} while(reset_div);
@@ -1259,9 +1260,10 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	/* DDR mode set */
 	if (ios->timing == MMC_TIMING_UHS_DDR50 ||
-	    ios->timing == MMC_TIMING_MMC_HS200_DDR)
-		regs |= (0x1 << slot->id) << 16;
-	else
+	    ios->timing == MMC_TIMING_MMC_HS200_DDR) {
+		if (!mmc->tuning_progress)
+			regs |= (0x1 << slot->id) << 16;
+	} else
 		regs &= ~(0x1 << slot->id) << 16;
 
 	if (slot->host->pdata->caps &
@@ -1273,10 +1275,12 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	mci_writel(slot->host, UHS_REG, regs);
 
 	if (ios->timing == MMC_TIMING_MMC_HS200_DDR)
-		mci_writel(slot->host, CDTHRCTL, 512 << 16 | 1);
+		if (!mmc->tuning_progress)
+			mci_writel(slot->host, CDTHRCTL, 512 << 16 | 1);
 
 	if (slot->host->pdata->set_io_timing)
-		slot->host->pdata->set_io_timing(slot->host, ios->timing);
+		slot->host->pdata->set_io_timing(slot->host,
+				mmc->tuning_progress, ios->timing);
 
 	if (ios->clock) {
 		/*
@@ -1315,6 +1319,7 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 			}
 		}
 		/* reset host-controller */
+		spin_lock(&slot->host->cclk_lock);
 		dw_mci_ciu_clk_en(slot->host);
 		dw_mci_wait_reset(&slot->host->dev, slot->host,
 				(SDMMC_CTRL_RESET |
@@ -1322,6 +1327,7 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				 SDMMC_CTRL_DMA_RESET));
 		mci_writel(slot->host, CTRL, SDMMC_CTRL_INT_ENABLE);
 		dw_mci_ciu_clk_dis(slot->host);
+		spin_unlock(&slot->host->cclk_lock);
 		break;
 #endif
 	case MMC_POWER_UP:
@@ -1462,11 +1468,28 @@ static u8 dw_mci_get_sampling(struct dw_mci *host)
 	return sample;
 }
 
-static s8 get_median_sample(u8 map)
+static s8 get_median_sample(struct dw_mci *host, u8 map)
 {
 	const u8 iter = 8;
 	u8 __map;
 	s8 i, sel = -1;
+	u8 divratio;
+
+	divratio = (mci_readl(host, CLKSEL) >> 24) & 0x7;
+
+	if (divratio == 1) {
+		map = map & (map >> 4);
+		map = map | (map << 4);
+		goto median3;
+	}
+
+	for (i = 0; i < iter; i++) {
+		__map = ror8(map, i);
+		if ((__map & 0xef) == 0xef) {
+			sel = i;
+			goto out;
+		}
+	}
 
 	for (i = 0; i < iter; i++) {
 		__map = ror8(map, i);
@@ -1476,6 +1499,7 @@ static s8 get_median_sample(u8 map)
 		}
 	}
 
+median3:
 	for (i = 0; i < iter; i++) {
 		__map = ror8(map, i);
 		if ((__map & 0x83) == 0x83) {
@@ -1484,8 +1508,94 @@ static s8 get_median_sample(u8 map)
 		}
 	}
 
+	if (host->pdata->extra_tuning)
+		sel = host->pdata->extra_tuning(map);
+
 out:
 	return sel;
+}
+
+static s16 get_median_sample_16bits(struct dw_mci *host, u16 map)
+{
+	const u16 iter = 16;
+	u16 __map;
+	s16 i, sel = -1;
+	u8 divratio;
+
+	divratio = (mci_readl(host, CLKSEL) >> 24) & 0x7;
+
+	if (divratio == 1) {
+		map = map & (map >> 8);
+		map = map | (map << 8);
+		goto median7;
+	}
+
+	for (i = 0; i < iter; i++) {
+		__map = ror16(map, i);
+		if ((__map & 0xfc7f) == 0xfc7f) {
+			sel = i;
+			goto out;
+		}
+	}
+
+	for (i = 0; i < iter; i++) {
+		__map = ror16(map, i);
+		if ((__map & 0xf83f) == 0xf83f) {
+			sel = i;
+			goto out;
+		}
+	}
+
+	for (i = 0; i < iter; i++) {
+		__map = ror16(map, i);
+		if ((__map & 0xf01f) == 0xf01f) {
+			sel = i;
+			goto out;
+		}
+	}
+
+median7:
+	for (i = 0; i < iter; i++) {
+		__map = ror16(map, i);
+		if ((__map & 0xe00f) == 0xe00f) {
+			sel = i;
+			goto out;
+		}
+	}
+
+	for (i = 0; i < iter; i++) {
+		__map = ror16(map, i);
+		if ((__map & 0xc007) == 0xc007) {
+			sel = i;
+			goto out;
+		}
+	}
+
+	for (i = 0; i < iter; i++) {
+		__map = ror16(map, i);
+		if ((__map & 0x8003) == 0x8003) {
+			sel = i;
+			goto out;
+		}
+	}
+
+out:
+	return sel;
+}
+
+static void dw_mci_set_fine_tuning_bit(struct dw_mci *host,
+		bool is_fine_tuning)
+{
+	u32 clksel;
+
+	clksel = mci_readl(host, CLKSEL);
+	clksel = (clksel & ~BIT(6));
+	if (is_fine_tuning) {
+		host->pdata->is_fine_tuned = true;
+		clksel |= BIT(6);
+	} else
+		host->pdata->is_fine_tuned = false;
+	mci_writel(host, CLKSEL, clksel);
 }
 
 static void dw_mci_save_drv_st(struct dw_mci_slot *slot)
@@ -1517,15 +1627,25 @@ static int dw_mci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	struct dw_mci_slot *slot = mmc_priv(mmc);
 	struct dw_mci *host = slot->host;
 	unsigned int tuning_loop = MAX_TUNING_LOOP;
-	unsigned int retries = 4;
+	unsigned int retries = MAX_TUNING_RETRIES;
 	const u8 *tuning_blk_pattern;
 	bool tuned = false;
 	int ret = 0;
 	int compensation;
 	u8 *tuning_blk;
 	u8 blksz;
-	u8 tune, start_tune, map = 0;
-	s8 mid;
+	u8 tune, start_tune;
+	s16 mid = -1;
+	u8 pass_index;
+	u16 map = 0;
+	bool en_fine_tuning = false;
+	bool is_fine_tuning = false;
+	u16 abnormal_result = 0xFF;
+
+	if (host->quirks & DW_MMC_QUIRK_USE_FINE_TUNING) {
+		en_fine_tuning = true;
+		abnormal_result = 0xFFFF;
+	}
 
 	if (opcode == MMC_SEND_TUNING_BLOCK_HS200) {
 		if (mmc->ios.bus_width == MMC_BUS_WIDTH_8) {
@@ -1556,7 +1676,7 @@ static int dw_mci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	if (!tuning_blk)
 		return -ENOMEM;
 
-	start_tune = dw_mci_get_sampling(host);
+	tune = start_tune = dw_mci_get_sampling(host);
 	host->cd_rd_thr = 512;
 	mci_writel(host, CDTHRCTL, host->cd_rd_thr << 16 | 1);
 
@@ -1594,38 +1714,107 @@ static int dw_mci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		mrq.data = &data;
 		host->mrq = &mrq;
 
-		tune = dw_mci_tuning_sampling(host);
+		/*
+		 * DDR200 tuning Sequence with fine tuning setup
+		 *
+		 * 0. phase 0 (0 degree) + no fine tuning setup
+		 * - pass_index = 0
+		 * 1. phase 0 + fine tuning setup
+		 * - pass_index = 1
+		 * 2. phase 1 (90 degree) + no fine tuning setup
+		 * - pass_index = 2
+		 * ..
+		 * 15. phase 7 + fine tuning setup
+		 * - pass_index = 15
+		 *
+		 */
+		if (en_fine_tuning)
+			dw_mci_set_fine_tuning_bit(host, is_fine_tuning);
+		else
+			tune = dw_mci_tuning_sampling(host);
 
 		mmc_wait_for_req(mmc, &mrq);
 
+		pass_index = tune;
+		if (en_fine_tuning) {
+			pass_index *= 2;
+			if (is_fine_tuning) {
+				pass_index++;
+				tune = dw_mci_tuning_sampling(host);
+			}
+			is_fine_tuning = !is_fine_tuning;
+		}
+
 		if (!cmd.error && !data.error) {
 			if (!memcmp(tuning_blk_pattern, tuning_blk, blksz))
-				map |= (1 << tune);
+				map |= (1 << pass_index);
 		} else {
 			dev_dbg(&mmc->class_dev,
 				"Tuning error: cmd.error:%d, data.error:%d\n",
 				cmd.error, data.error);
 		}
 
-		if (start_tune == tune) {
-			mid = get_median_sample(map);
-			host->pdata->map[4 - retries] = map;
+		/*
+		 * if DW_MMC_QUIRK_USE_FINE_TUNING isn't set,
+		 * which means using fine tuning,
+		 * is_fine_tuning would never be changed, is only false.
+		 * So, backward compatibility is reserved.
+		 *
+		 * When using fine tuning, 16 bits pass map is needed.
+		 * And a function to get median value with 16 bit variable
+		 * is needed.
+		 */
+		if (start_tune == tune && !is_fine_tuning) {
 
-			if ((map == 0xff || mid < 0) && retries) {
+			if (en_fine_tuning)
+				mid = get_median_sample_16bits(host, map);
+			else
+				mid = get_median_sample(host, (u8)map);
+			dev_info(&host->dev,
+				"Tuning map: 0x %08x mid: %d\n", map, mid);
+
+			host->pdata->tuning_map[MAX_TUNING_RETRIES-retries] = map;
+
+			retries--;
+			if (mid >= 0) {
+				if (map != abnormal_result || !retries) {
+					tuned = true;
+					break;
+				}
+			}
+
+			if (retries) {
 				dw_mci_tuning_drv_st(slot);
 				map = 0;
-				retries--;
-			} else
-				tuned = true;
+			}
 		}
 		tuning_loop--;
 	} while (!tuned && retries);
 
 	dw_mci_restore_drv_st(slot, &compensation);
-	mid = (mid + 8 + compensation) % 8;
+
+	if (((mci_readl(host, CLKSEL) >> 24) & 0x7) == 1)
+		mid = (mid + 8 + compensation) % 8;
+	else
+		mid = (mid + 16 + compensation) % 16;
+
+	/*
+	 * To set sample value with mid, the value should be divided by 2,
+	 * because mid represents index in pass map extended.(8 -> 16 bits)
+	 * And that mid is odd number, means the selected case includes
+	 * using fine tuning.
+	 */
+	if (en_fine_tuning) {
+		if (mid % 2)
+			dw_mci_set_fine_tuning_bit(host, true);
+		else
+			dw_mci_set_fine_tuning_bit(host, false);
+
+		mid /= 2;
+	}
 
 	if (tuned) {
-		dw_mci_set_sampling(host, mid);
+		dw_mci_set_sampling(host, (u8)mid);
 		if (host->pdata->only_once_tune)
 			host->pdata->tuned = true;
 	} else {
@@ -3394,7 +3583,12 @@ int dw_mci_suspend(struct dw_mci *host)
 		if (!slot)
 			continue;
 		if (slot->mmc) {
-			dw_mci_ciu_clk_en(host);
+			int cclk_disabled;
+			spin_lock(&host->cclk_lock);
+			cclk_disabled = !atomic_read(&host->cclk_cnt);
+			if (cclk_disabled)
+				dw_mci_ciu_clk_en(host);
+
 			if (host->pdata->cd_type == DW_MCI_CD_GPIO)
 				tflash_present = dw_mci_get_cd(slot->mmc);
 			clkena = mci_readl(host, CLKENA);
@@ -3402,7 +3596,9 @@ int dw_mci_suspend(struct dw_mci *host)
 			mci_writel(host, CLKENA, clkena);
 			mci_send_cmd(slot,
 				SDMMC_CMD_UPD_CLK | SDMMC_CMD_PRV_DAT_WAIT, 0);
-			dw_mci_ciu_clk_dis(host);
+			if (cclk_disabled)
+				dw_mci_ciu_clk_dis(host);
+			spin_unlock(&host->cclk_lock);
 
 			slot->mmc->pm_flags |= slot->mmc->pm_caps;
 			if (slot->mmc->pm_flags & MMC_PM_KEEP_POWER)
@@ -3462,6 +3658,8 @@ EXPORT_SYMBOL(dw_mci_suspend);
 int dw_mci_resume(struct dw_mci *host)
 {
 	int i, ret;
+	int cclk_disabled;
+
 	host->current_speed = 0;
 
 	/* eMMC / SD power on and set GPIOs */
@@ -3479,15 +3677,22 @@ int dw_mci_resume(struct dw_mci *host)
 	if (host->vmmc)
 		regulator_enable(host->vmmc);
 
-	dw_mci_ciu_clk_en(host);
+	spin_lock(&host->cclk_lock);
+	cclk_disabled = !atomic_read(&host->cclk_cnt);
+	if (cclk_disabled)
+		dw_mci_ciu_clk_en(host);
 
 	if (!mci_wait_reset(&host->dev, host)) {
-		dw_mci_ciu_clk_dis(host);
+		if (cclk_disabled)
+			dw_mci_ciu_clk_dis(host);
+		spin_unlock(&host->cclk_lock);
 		ret = -ENODEV;
 		return ret;
 	}
 
-	dw_mci_ciu_clk_dis(host);
+	if (cclk_disabled)
+		dw_mci_ciu_clk_dis(host);
+	spin_unlock(&host->cclk_lock);
 
 	if (host->dma_ops->init)
 		host->dma_ops->init(host);
@@ -3520,15 +3725,22 @@ int dw_mci_resume(struct dw_mci *host)
 			ios.timing = MMC_TIMING_LEGACY;
 			dw_mci_set_ios(slot->mmc, &ios);
 			dw_mci_set_ios(slot->mmc, &slot->mmc->ios);
-			dw_mci_ciu_clk_en(host);
+			spin_lock(&host->cclk_lock);
+			cclk_disabled = !atomic_read(&host->cclk_cnt);
+			if (cclk_disabled)
+				dw_mci_ciu_clk_en(host);
 			dw_mci_setup_bus(slot, 1);
 			if (host->pdata->tuned) {
 				dw_mci_set_sampling(host,
 						host->pdata->clk_smpl);
+				dw_mci_set_fine_tuning_bit(host,
+						host->pdata->is_fine_tuned);
 				mci_writel(host, CDTHRCTL,
 						host->cd_rd_thr << 16 | 1);
 			}
-			dw_mci_ciu_clk_dis(host);
+			if (cclk_disabled)
+				dw_mci_ciu_clk_dis(host);
+			spin_unlock(&host->cclk_lock);
 		}
 
 		ret = mmc_resume_host(host->slot[i]->mmc);

@@ -268,6 +268,9 @@ struct mipi_dsim_device {
 
 	struct mipi_dsim_lcd_driver	*dsim_lcd_drv;
 	unsigned int enabled;
+#ifdef CONFIG_FB_MIPI_DSIM_DBG
+	unsigned int timeout_cnt;
+#endif
 };
 
 /**
@@ -293,7 +296,6 @@ struct s5p_platform_mipi_dsim {
 
 	int (*mipi_power) (struct mipi_dsim_device *dsim, unsigned int
 		enable);
-	int (*part_reset) (struct mipi_dsim_device *dsim);
 	int (*init_d_phy) (struct mipi_dsim_device *dsim, unsigned int enable);
 	int (*get_fb_frame_done) (struct fb_info *info);
 	void (*trigger) (struct fb_info *info);

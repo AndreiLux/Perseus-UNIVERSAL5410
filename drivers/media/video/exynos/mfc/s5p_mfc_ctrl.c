@@ -389,10 +389,31 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 
 	mfc_debug(2, "Will now wait for completion of firmware transfer.\n");
 	if (s5p_mfc_wait_for_done_dev(dev, S5P_FIMV_R2H_CMD_FW_STATUS_RET)) {
-		mfc_err("Failed to load firmware.\n");
-		s5p_mfc_clean_dev_int_flags(dev);
-		ret = -EIO;
-		goto err_init_hw;
+		int cnt = 1, retry = 3;
+		for (; cnt <= retry; cnt++) {
+			mfc_err("Failed to load firmware. (%d/%d)\n", cnt, retry);
+			mfc_err("Pwr/Clk = %d/%d, DBG counter = 0x%x\n",
+				s5p_mfc_get_power_ref_cnt(), s5p_mfc_get_clk_ref_cnt(),
+				mfc_get_info_stage_counter());
+			msleep(500 * cnt);
+			if (IS_MFCV6(dev)) {
+				mfc_err("Try again : %d\n", cnt);
+				s5p_mfc_write_reg(0x1, S5P_FIMV_RISC_ON);
+			} else {
+				s5p_mfc_write_reg(0x3ff, S5P_FIMV_SW_RESET);
+			}
+
+			mfc_debug(2, "Will now wait for completion of firmware transfer.\n");
+			if (s5p_mfc_wait_for_done_dev(dev, S5P_FIMV_R2H_CMD_FW_STATUS_RET) == 0)
+				break;
+		}
+
+		if (cnt > retry) {
+			mfc_err("Finally failed to load.\n");
+			s5p_mfc_clean_dev_int_flags(dev);
+			ret = -EIO;
+			goto err_init_hw;
+		}
 	}
 
 	s5p_mfc_clean_dev_int_flags(dev);
@@ -445,6 +466,8 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 
 err_init_hw:
 	s5p_mfc_clock_off();
+	if (ret != 0)
+		mfc_err("Init h/w is failed\n");
 	mfc_debug_leave();
 
 	return ret;
@@ -471,32 +494,24 @@ void s5p_mfc_deinit_hw(struct s5p_mfc_dev *dev)
 int s5p_mfc_sleep(struct s5p_mfc_dev *dev)
 {
 	struct s5p_mfc_ctx *ctx;
-	int new_ctx;
 	int ret;
 
 	mfc_debug_enter();
 
 	if (!dev) {
-		mfc_info("No mfc device to run\n");
-		ret = 0;
-		return ret;
+		mfc_err("no mfc device to run\n");
+		return 0;
 	}
 
-	spin_lock_irq(&dev->condlock);
-	new_ctx = s5p_mfc_get_new_ctx(dev);
-	spin_unlock_irq(&dev->condlock);
-
-	if (new_ctx < 0) {
-		mfc_info("No ctx is scheduled to be run\n");
-		ret = 0;
-		return ret;
+	if (dev->num_inst == 0) {
+		mfc_err("instance count is 0, ignoring to enter sleep\n");
+		return 0;
 	}
 
-	ctx = dev->ctx[new_ctx];
+	ctx = dev->ctx[dev->curr_ctx];
 	if (!ctx) {
-		mfc_info("No ctx: not need to enter suspend\n");
-		ret = 0;
-		return ret;
+		mfc_err("no mfc context to run\n");
+		return 0;
 	}
 
 	ret = wait_event_interruptible_timeout(ctx->queue,
@@ -551,6 +566,11 @@ int s5p_mfc_wakeup(struct s5p_mfc_dev *dev)
 	if (!dev) {
 		mfc_err("no mfc device to run\n");
 		return -EINVAL;
+	}
+
+	if (dev->num_inst == 0) {
+		mfc_err("instance count is 0, ignoring to wakeup\n");
+		return 0;
 	}
 
 	/* 0. MFC reset */
@@ -608,4 +628,3 @@ err_mfc_wakeup:
 
 	return 0;
 }
-

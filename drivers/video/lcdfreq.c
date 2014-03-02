@@ -630,7 +630,7 @@ static int lcdfreq_probe(struct platform_device *pdev)
 		pr_err("%s skip: get_divider", __func__);
 		fb->fix.reserved[0] = 0;
 		fb->fix.reserved[1] = 0;
-		goto err_1;
+		goto err_2;
 	}
 
 	atomic_set(&info->usage, 0);

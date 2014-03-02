@@ -1276,10 +1276,11 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 
 	wr_regl(port, S3C2410_ULCON, ulcon);
 	wr_regl(port, S3C2410_UBRDIV, quot);
-	wr_regl(port, S3C2410_UMCON, umcon);
 
 	if (ourport->info->has_divslot)
 		wr_regl(port, S3C2443_DIVSLOT, udivslot);
+
+	wr_regl(port, S3C2410_UMCON, umcon);
 
 	dbg("uart: ulcon = 0x%08x, ucon = 0x%08x, ufcon = 0x%08x\n",
 	    rd_regl(port, S3C2410_ULCON),

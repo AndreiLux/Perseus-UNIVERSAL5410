@@ -22,6 +22,7 @@ int s5p_mfc_clock_init(void);
 void s5p_mfc_clock_release(void);
 int s5p_mfc_power_on(void);
 int s5p_mfc_power_off(void);
+int s5p_mfc_get_power_ref_cnt(void);
 int s5p_mfc_get_clk_ref_cnt(void);
 int s5p_mfc_clock_set_rate(struct s5p_mfc_dev *dev, unsigned long rate);
 

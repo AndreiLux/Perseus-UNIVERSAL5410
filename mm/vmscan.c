@@ -3154,9 +3154,11 @@ unsigned long global_reclaimable_pages(void)
 	nr = global_page_state(NR_ACTIVE_FILE) +
 	     global_page_state(NR_INACTIVE_FILE);
 
+#ifndef CONFIG_ZRAM_FOR_ANDROID
 	if (nr_swap_pages > 0)
 		nr += global_page_state(NR_ACTIVE_ANON) +
 		      global_page_state(NR_INACTIVE_ANON);
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
 
 	return nr;
 }
@@ -3168,9 +3170,11 @@ unsigned long zone_reclaimable_pages(struct zone *zone)
 	nr = zone_page_state(zone, NR_ACTIVE_FILE) +
 	     zone_page_state(zone, NR_INACTIVE_FILE);
 
+#ifndef CONFIG_ZRAM_FOR_ANDROID
 	if (nr_swap_pages > 0)
 		nr += zone_page_state(zone, NR_ACTIVE_ANON) +
 		      zone_page_state(zone, NR_INACTIVE_ANON);
+#endif /* CONFIG_ZRAM_FOR_ANDROID */
 
 	return nr;
 }

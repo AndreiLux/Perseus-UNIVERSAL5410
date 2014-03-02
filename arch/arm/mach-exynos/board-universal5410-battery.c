@@ -58,7 +58,7 @@ unsigned int lpcharge;
 EXPORT_SYMBOL(lpcharge);
 
 static sec_charging_current_t charging_current_table[] = {
-	{0,	0,	0,	0},
+	{1900,	1600,	200,	40 * 60},
 	{0,	0,	0,	0},
 	{0,	0,	0,	0},
 	{1900,	1600,	200,	40*60},
@@ -128,12 +128,14 @@ static bool sec_chg_gpio_init(void)
 
 static int sec_bat_is_lpm_check(char *str)
 {
-	get_option(&str, &lpcharge);
+	if (strncmp(str, "charger", 7) == 0)
+		lpcharge = 1;
+
 	pr_info("%s: Low power charging mode: %d\n", __func__, lpcharge);
 
 	return lpcharge;
 }
-__setup("lpcharge=", sec_bat_is_lpm_check);
+__setup("androidboot.mode=", sec_bat_is_lpm_check);
 
 static bool sec_bat_is_lpm(void)
 {
@@ -171,12 +173,12 @@ static int sec_bat_check_cable_callback(void)
 	return current_cable_type;
 }
 
-static bool sec_bat_check_jig_status(void) 
+static bool sec_bat_check_jig_status(void)
 {
 	if (current_cable_type == POWER_SUPPLY_TYPE_UARTOFF)
 		return true;
 	else
-		return false; 
+		return false;
 
 }
 

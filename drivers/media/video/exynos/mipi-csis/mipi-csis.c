@@ -772,7 +772,7 @@ static int s5pcsis_suspend(struct device *dev)
 	mutex_lock(&state->lock);
 	if (state->flags & ST_POWERED) {
 		s5pcsis_stop_stream(state);
-		ret = pdata->phy_enable(state->pdev, false);
+		ret = pdata->phy_enable(state->pdev->id, false);
 		if (ret)
 			goto unlock;
 		if (state->supply) {
@@ -809,7 +809,7 @@ static int s5pcsis_resume(struct device *dev)
 		if (ret)
 			goto unlock;
 
-		ret = pdata->phy_enable(state->pdev, true);
+		ret = pdata->phy_enable(state->pdev->id, true);
 		if (!ret) {
 			state->flags |= ST_POWERED;
 		} else if (state->supply) {

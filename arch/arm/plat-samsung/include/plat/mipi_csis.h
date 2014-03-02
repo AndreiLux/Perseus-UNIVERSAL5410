@@ -30,16 +30,16 @@ struct s5p_platform_mipi_csis {
 	u8 alignment;
 	u8 hs_settle;
 	bool fixed_phy_vdd;
-	int (*phy_enable)(struct platform_device *pdev, bool on);
+	int (*phy_enable)(int id, bool on);
 };
 
 /**
  * s5p_csis_phy_enable - global MIPI-CSI receiver D-PHY control
- * @pdev: MIPI-CSIS platform device
+ * @id: MIPI-CSIS platform device id
  * @on: true to enable D-PHY and deassert its reset
  *	false to disable D-PHY
  */
-int s5p_csis_phy_enable(struct platform_device *pdev, bool on);
+int s5p_csis_phy_enable(int id, bool on);
 extern struct s5p_platform_mipi_csis s5p_mipi_csis0_default_data;
 extern struct s5p_platform_mipi_csis s5p_mipi_csis1_default_data;
 extern struct s5p_platform_mipi_csis s5p_mipi_csis2_default_data;

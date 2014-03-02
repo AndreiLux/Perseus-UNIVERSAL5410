@@ -1230,14 +1230,6 @@ static int s3c64xx_spi_suspend(struct device *dev)
 
 	spi_master_suspend(master);
 
-	if (pdev->id < 3) {
-		if (!pm_runtime_enabled(dev)) {
-			/* Disable the clock */
-			clk_disable(sdd->src_clk);
-			clk_disable(sdd->clk);
-		}
-	}
-
 	sdd->cur_speed = 0; /* Output Clock is stopped */
 
 	return 0;
@@ -1259,11 +1251,8 @@ static int s3c64xx_spi_resume(struct device *dev)
 
 		s3c64xx_spi_hwinit(sdd, pdev->id);
 
-		if (pm_runtime_enabled(dev)) {
-			/* Disable the clock */
-			clk_disable(sdd->src_clk);
-			clk_disable(sdd->clk);
-		}
+		clk_disable(sdd->src_clk);
+		clk_disable(sdd->clk);
 	}
 
 	spi_master_resume(master);

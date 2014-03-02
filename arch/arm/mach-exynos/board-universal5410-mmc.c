@@ -47,6 +47,20 @@ static struct dw_mci_clk exynos_dwmci_clk_rates_for_epll[] = {
 	{400 * 1000 * 1000, 800 * 1000 * 1000},
 };
 
+static s8 exynos_dwmci0_extra_tuning(u8 map)
+{
+	s8 sel = -1;
+
+	if ((map & 0x03) == 0x03)
+		sel = 0;
+	else if ((map & 0x0c) == 0x0c)
+		sel = 3;
+	else if ((map & 0x06) == 0x06)
+		sel = 2;
+
+	return sel;
+}
+
 static int univerasl5410_dwmci_om_check(void *data)
 {
 	struct dw_mci *host = (struct dw_mci *)data;
@@ -196,7 +210,8 @@ static int exynos_dwmci0_init(u32 slot_id, irq_handler_t handler, void *data)
 static struct dw_mci_board universal5410_dwmci0_pdata __initdata = {
 	.num_slots		= 1,
 	.quirks			= DW_MCI_QUIRK_BROKEN_CARD_DETECTION |
-				  DW_MCI_QUIRK_HIGHSPEED,
+				  DW_MCI_QUIRK_HIGHSPEED |
+				  DW_MMC_QUIRK_USE_FINE_TUNING,
 	.bus_hz			= 160 * 1000 * 1000,
 	.caps			= MMC_CAP_CMD23 | MMC_CAP_8_BIT_DATA |
 				  MMC_CAP_UHS_DDR50 | MMC_CAP_1_8V_DDR |
@@ -226,6 +241,7 @@ static struct dw_mci_board universal5410_dwmci0_pdata __initdata = {
 		.pin			= EXYNOS5410_GPC0(0),
 		.val			= S5P_GPIO_DRVSTR_LV4,
 	},
+	.extra_tuning           = exynos_dwmci0_extra_tuning,
 };
 
 static int universal5410_dwmci_get_ro(u32 slot_id)

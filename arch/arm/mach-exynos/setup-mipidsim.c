@@ -27,6 +27,7 @@
 #include <linux/clk.h>
 #include <linux/regulator/consumer.h>
 
+#include <mach/exynos-mipiphy.h>
 #include <mach/map.h>
 #include <mach/regs-clock.h>
 
@@ -34,76 +35,14 @@
 #include <plat/clock.h>
 #include <plat/regs-mipidsim.h>
 
-#define S5P_MIPI_M_RESETN 4
-
-static int s5p_dsim_enable_d_phy(struct mipi_dsim_device *dsim,
-		unsigned int enable)
-{
-	unsigned int reg;
-#if defined(CONFIG_ARCH_EXYNOS5)
-#ifdef CONFIG_S5P_DEV_MIPI_DSIM0
-	reg = readl(S5P_MIPI_DPHY_CONTROL(0)) & ~(1 << 0);
-	/*TODO: enable bit is shared by DSI and CSI,
-	 *      to use runtime PM or reference count*/
-	reg |= (enable << 0);
-	writel(reg, S5P_MIPI_DPHY_CONTROL(0));
-#else
-	reg = readl(S5P_MIPI_DPHY_CONTROL(1)) & ~(1 << 0);
-	/*TODO: enable bit is shared by DSI and CSI,
-	 *      to use runtime PM or reference count*/
-	reg |= (enable << 0);
-	writel(reg, S5P_MIPI_DPHY_CONTROL(1));
-#endif
-#else
-	reg = readl(S5P_MIPI_DPHY_CONTROL(0)) & ~(1 << 0);
-	reg |= (enable << 0);
-	writel(reg, S5P_MIPI_DPHY_CONTROL(0));
-#endif
-	return 0;
-}
-
-static int s5p_dsim_enable_dsi_master(struct mipi_dsim_device *dsim,
-	unsigned int enable)
-{
-	unsigned int reg;
-#if defined(CONFIG_ARCH_EXYNOS5)
-#ifdef CONFIG_S5P_DEV_MIPI_DSIM0
-	reg = readl(S5P_MIPI_DPHY_CONTROL(0)) & ~(1 << 2);
-	reg |= (enable << 2);
-	writel(reg, S5P_MIPI_DPHY_CONTROL(0));
-#else
-	reg = readl(S5P_MIPI_DPHY_CONTROL(1)) & ~(1 << 2);
-	reg |= (enable << 2);
-	writel(reg, S5P_MIPI_DPHY_CONTROL(1));
-#endif
-#else
-	reg = readl(S5P_MIPI_DPHY_CONTROL(0)) & ~(1 << 2);
-	reg |= (enable << 2);
-	writel(reg, S5P_MIPI_DPHY_CONTROL(0));
-#endif
-	return 0;
-}
-
-int s5p_dsim_part_reset(struct mipi_dsim_device *dsim)
-{
-#if defined(CONFIG_ARCH_EXYNOS5)
-	if (dsim->id == 0)
-		writel(S5P_MIPI_M_RESETN, S5P_MIPI_DPHY_CONTROL(1));
-#else
-	if (dsim->id == 0)
-		writel(S5P_MIPI_M_RESETN, S5P_MIPI_DPHY_CONTROL(0));
-#endif
-	return 0;
-}
-
 int s5p_dsim_init_d_phy(struct mipi_dsim_device *dsim, unsigned int enable)
 {
 	/**
 	 * DPHY and aster block must be enabled at the system initialization
 	 * step before data access from/to DPHY begins.
 	 */
-	s5p_dsim_enable_d_phy(dsim, enable);
+	struct platform_device *pdev = to_platform_device(dsim->dev);
+	s5p_dsim_phy_enable(pdev->id, enable);
 
-	s5p_dsim_enable_dsi_master(dsim, enable);
 	return 0;
 }

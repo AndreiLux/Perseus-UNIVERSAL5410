@@ -32,6 +32,7 @@
 #include <linux/v4l2-mediabus.h>
 #include <linux/bug.h>
 
+#include <mach/exynos-mipiphy.h>
 #include <mach/map.h>
 #include <mach/regs-clock.h>
 
@@ -417,56 +418,16 @@ static void s5pcsis_set_params(unsigned long mipi_reg_base,
 	writel(val | S5PCSIS_CTRL_UPDATE_SHADOW, mipi_reg_base + S5PCSIS_CTRL);
 }
 
-int enable_mipi(void)
+int enable_mipi(bool enable)
 {
 	void __iomem *addr;
 	u32 cfg;
 
-	addr = S5P_MIPI_DPHY_CONTROL(0);
+	s5p_csis_phy_enable(0, enable);
+	s5p_csis_phy_enable(1, enable);
+	s5p_csis_phy_enable(2, enable);
 
-	cfg = __raw_readl(addr);
-	cfg = (cfg | S5P_MIPI_DPHY_SRESETN);
-	__raw_writel(cfg, addr);
-
-	if (1) {
-		cfg |= S5P_MIPI_DPHY_ENABLE;
-	} else if (!(cfg & (S5P_MIPI_DPHY_SRESETN | S5P_MIPI_DPHY_MRESETN)
-			& (~S5P_MIPI_DPHY_SRESETN))) {
-		cfg &= ~S5P_MIPI_DPHY_ENABLE;
-	}
-
-	__raw_writel(cfg, addr);
-
-
-	addr = S5P_MIPI_DPHY_CONTROL(1);
-
-	cfg = __raw_readl(addr);
-	cfg = (cfg | S5P_MIPI_DPHY_SRESETN);
-	__raw_writel(cfg, addr);
-
-	if (1) {
-		cfg |= S5P_MIPI_DPHY_ENABLE;
-	} else if (!(cfg & (S5P_MIPI_DPHY_SRESETN | S5P_MIPI_DPHY_MRESETN)
-			& (~S5P_MIPI_DPHY_SRESETN))) {
-		cfg &= ~S5P_MIPI_DPHY_ENABLE;
-	}
-
-	__raw_writel(cfg, addr);
-
-	addr = S5P_MIPI_DPHY_CONTROL(2);
-
-	cfg = __raw_readl(addr);
-	cfg = (cfg | S5P_MIPI_DPHY_SRESETN);
-	__raw_writel(cfg, addr);
-
-	cfg |= S5P_MIPI_DPHY_ENABLE;
-	if (!(cfg & (S5P_MIPI_DPHY_SRESETN | S5P_MIPI_DPHY_MRESETN)
-			& (~S5P_MIPI_DPHY_SRESETN)))
-		cfg &= ~S5P_MIPI_DPHY_ENABLE;
-
-	__raw_writel(cfg, addr);
 	return 0;
-
 }
 
 int start_mipi_csi(int channel, struct fimc_is_frame_info *f_frame,

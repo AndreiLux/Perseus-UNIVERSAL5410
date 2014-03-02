@@ -186,7 +186,7 @@ static void synaptics_rmi4_open_work(struct work_struct *work);
 
 #ifdef TSP_BOOSTER
 static void synaptics_set_dvfs_lock(struct synaptics_rmi4_data *rmi4_data,
-					uint32_t on, bool mode);
+					unsigned int mode, bool restart);
 #endif
 
 static ssize_t synaptics_rmi4_f01_reset_store(struct device *dev,
@@ -618,9 +618,8 @@ static void synaptics_change_dvfs_lock(struct work_struct *work)
 
 	mutex_lock(&rmi4_data->dvfs_lock);
 
-	if (TSP_BOOSTER_LEVEL1 == rmi4_data->boost_level) {
-		dev_dbg(&rmi4_data->i2c_client->dev, "%s Off all\n", __func__);
-
+	switch (rmi4_data->boost_level) {
+	case TSP_BOOSTER_LEVEL1:
 		if (pm_qos_request_active(&rmi4_data->tsp_cpu_qos))
 			pm_qos_remove_request(&rmi4_data->tsp_cpu_qos);
 
@@ -629,11 +628,28 @@ static void synaptics_change_dvfs_lock(struct work_struct *work)
 
 		if (pm_qos_request_active(&rmi4_data->tsp_int_qos))
 			pm_qos_remove_request(&rmi4_data->tsp_int_qos);
-	} else {
-		if (pm_qos_request_active(&rmi4_data->tsp_mif_qos)) {
-			pm_qos_update_request(&rmi4_data->tsp_mif_qos, 400000); /* MIF 400MHz */
-			dev_dbg(&rmi4_data->i2c_client->dev, "change_mif_dvfs_lock\n");
-		}
+
+		dev_dbg(&rmi4_data->i2c_client->dev, "%s: [TSP_DVFS] level[%d] : DVFS OFF\n",
+			__func__, rmi4_data->boost_level);
+		break;
+	case TSP_BOOSTER_LEVEL2:
+		if (pm_qos_request_active(&rmi4_data->tsp_mif_qos))
+			pm_qos_update_request(&rmi4_data->tsp_mif_qos, TOUCH_BOOSTER_MIF_FRQ_2);
+
+		dev_dbg(&rmi4_data->i2c_client->dev, "%s: [TSP_DVFS] level[%d] : DVFS CHANGED\n",
+			__func__, rmi4_data->boost_level);
+		break;
+	case TSP_BOOSTER_LEVEL9:
+		if (pm_qos_request_active(&rmi4_data->tsp_cpu_qos))
+			pm_qos_update_request(&rmi4_data->tsp_cpu_qos, TOUCH_BOOSTER_CPU_FRQ_9_T);
+
+		dev_dbg(&rmi4_data->i2c_client->dev, "%s: [TSP_DVFS] level[%d] : DVFS CHANGED\n",
+			__func__, rmi4_data->boost_level);
+		break;
+	default:
+		dev_err(&rmi4_data->i2c_client->dev, "%s: [TSP_DVFS] Undefined type passed %d\n",
+			__func__, rmi4_data->boost_level);
+		break;
 	}
 
 	mutex_unlock(&rmi4_data->dvfs_lock);
@@ -659,64 +675,112 @@ static void synaptics_set_dvfs_off(struct work_struct *work)
 	rmi4_data->dvfs_lock_status = false;
 	mutex_unlock(&rmi4_data->dvfs_lock);
 
-	dev_dbg(&rmi4_data->i2c_client->dev, "TSP DVFS Off %d\n", rmi4_data->boost_level);
+	dev_dbg(&rmi4_data->i2c_client->dev, "%s: [TSP_DVFS] level[%d] : DVFS OFF\n",
+		__func__, rmi4_data->boost_level);
 }
 
-static void synaptics_set_dvfs_lock(struct synaptics_rmi4_data *rmi4_data,
-					uint32_t on, bool mode)
+static void synaptics_init_dvfs_level(struct synaptics_rmi4_data *rmi4_data)
 {
-	if (TSP_BOOSTER_DISABLE == rmi4_data->boost_level)
+	/* DVFS level is depend on booster_level which is writed by sysfs
+	 * booster_level : 1	(press)CPU 600000, MIF 800000, INT 200000 -> after 200msec -> OFF
+	 * booster_level : 2	(press)CPU 600000, MIF 800000, INT 200000 -> after 200msec
+	 *							-> CPU 600000, MIF 400000, INT 200000 -> after 300msec -> OFF
+	 * booster_level : 9	(press)CPU 1600000, MIF 800000, INT 400000 -> after 500msec
+	 *							-> CPU 1200000, MIF 800000, INT 400000 -> after 1000msec -> OFF
+	 */
+	unsigned int level = rmi4_data->boost_level;
+
+	switch (level) {
+	case TSP_BOOSTER_LEVEL1:
+	case TSP_BOOSTER_LEVEL2:
+		if (pm_qos_request_active(&rmi4_data->tsp_cpu_qos))
+			pm_qos_update_request(&rmi4_data->tsp_cpu_qos, TOUCH_BOOSTER_CPU_FRQ_1);
+		else
+			pm_qos_add_request(&rmi4_data->tsp_cpu_qos, PM_QOS_CPU_FREQ_MIN, TOUCH_BOOSTER_CPU_FRQ_1);
+
+		if (pm_qos_request_active(&rmi4_data->tsp_mif_qos))
+			pm_qos_update_request(&rmi4_data->tsp_mif_qos, TOUCH_BOOSTER_MIF_FRQ_1);
+		else
+			pm_qos_add_request(&rmi4_data->tsp_mif_qos, PM_QOS_BUS_THROUGHPUT, TOUCH_BOOSTER_MIF_FRQ_1);
+
+		if (pm_qos_request_active(&rmi4_data->tsp_int_qos))
+			pm_qos_update_request(&rmi4_data->tsp_int_qos, TOUCH_BOOSTER_INT_FRQ_1);
+		else
+			pm_qos_add_request(&rmi4_data->tsp_int_qos, PM_QOS_DEVICE_THROUGHPUT, TOUCH_BOOSTER_INT_FRQ_1);
+		break;
+	case TSP_BOOSTER_LEVEL9:
+		if (pm_qos_request_active(&rmi4_data->tsp_cpu_qos))
+			pm_qos_update_request(&rmi4_data->tsp_cpu_qos, TOUCH_BOOSTER_CPU_FRQ_9);
+		else
+			pm_qos_add_request(&rmi4_data->tsp_cpu_qos, PM_QOS_CPU_FREQ_MIN, TOUCH_BOOSTER_CPU_FRQ_9);
+
+		if (pm_qos_request_active(&rmi4_data->tsp_mif_qos))
+			pm_qos_update_request(&rmi4_data->tsp_mif_qos, TOUCH_BOOSTER_MIF_FRQ_9);
+		else
+			pm_qos_add_request(&rmi4_data->tsp_mif_qos, PM_QOS_BUS_THROUGHPUT, TOUCH_BOOSTER_MIF_FRQ_9);
+
+		if (pm_qos_request_active(&rmi4_data->tsp_int_qos))
+			pm_qos_update_request(&rmi4_data->tsp_int_qos, TOUCH_BOOSTER_INT_FRQ_9);
+		else
+			pm_qos_add_request(&rmi4_data->tsp_int_qos, PM_QOS_DEVICE_THROUGHPUT, TOUCH_BOOSTER_INT_FRQ_9);
+		break;
+	default:
+		dev_err(&rmi4_data->i2c_client->dev, "%s: [TSP_DVFS] Undefined type passed %d\n",
+			__func__, level);
+		break;
+	}
+}
+
+static void synaptics_set_dvfs_lock(struct synaptics_rmi4_data *rmi4_data, unsigned int mode, bool restart)
+{
+	if (rmi4_data->boost_level == TSP_BOOSTER_DISABLE)
 		return;
 
 	mutex_lock(&rmi4_data->dvfs_lock);
-	if (on == 0) {
+
+	switch (mode) {
+	case TSP_BOOSTER_OFF:
 		if (rmi4_data->dvfs_lock_status) {
-			schedule_delayed_work(&rmi4_data->work_dvfs_off,
-				msecs_to_jiffies(TOUCH_BOOSTER_OFF_TIME));
+			if (rmi4_data->boost_level == TSP_BOOSTER_LEVEL9)
+				schedule_delayed_work(&rmi4_data->work_dvfs_off,
+					msecs_to_jiffies(TOUCH_BOOSTER_OFF_TIME_9));
+			else
+				schedule_delayed_work(&rmi4_data->work_dvfs_off,
+					msecs_to_jiffies(TOUCH_BOOSTER_OFF_TIME));
 		}
-	} else if (on == 1) {
+		break;
+	case TSP_BOOSTER_ON:
 		cancel_delayed_work(&rmi4_data->work_dvfs_off);
-		if (!rmi4_data->dvfs_lock_status || mode) {
-			if (rmi4_data->dvfs_lock_status && mode) {
-				cancel_delayed_work(&rmi4_data->work_dvfs_chg);
 
-				if (pm_qos_request_active(&rmi4_data->tsp_cpu_qos))
-					pm_qos_update_request(&rmi4_data->tsp_cpu_qos, CPU_QOS_FREQ);
-				else
-					pm_qos_add_request(&rmi4_data->tsp_cpu_qos, PM_QOS_CPU_FREQ_MIN, CPU_QOS_FREQ);
+		if (!rmi4_data->dvfs_lock_status || restart) {
+			cancel_delayed_work(&rmi4_data->work_dvfs_chg);
+			synaptics_init_dvfs_level(rmi4_data);
 
-				if (pm_qos_request_active(&rmi4_data->tsp_mif_qos))
-					pm_qos_update_request(&rmi4_data->tsp_mif_qos, MIF_QOS_FREQ);
-				else
-					pm_qos_add_request(&rmi4_data->tsp_mif_qos, PM_QOS_BUS_THROUGHPUT, MIF_QOS_FREQ);
-
-				if (pm_qos_request_active(&rmi4_data->tsp_int_qos))
-					pm_qos_update_request(&rmi4_data->tsp_int_qos, INT_QOS_FREQ);
-				else
-					pm_qos_add_request(&rmi4_data->tsp_int_qos, PM_QOS_DEVICE_THROUGHPUT, INT_QOS_FREQ);
-			} else {
-				pm_qos_add_request(&rmi4_data->tsp_cpu_qos, PM_QOS_CPU_FREQ_MIN, CPU_QOS_FREQ); /* CPU KFC 1.2GHz */
-				pm_qos_add_request(&rmi4_data->tsp_mif_qos, PM_QOS_BUS_THROUGHPUT, MIF_QOS_FREQ); /* MIF 800MHz */
-				pm_qos_add_request(&rmi4_data->tsp_int_qos, PM_QOS_DEVICE_THROUGHPUT, INT_QOS_FREQ); /* INT 200MHz */
-			}
-			schedule_delayed_work(&rmi4_data->work_dvfs_chg,
+			if (rmi4_data->boost_level == TSP_BOOSTER_LEVEL9)
+				schedule_delayed_work(&rmi4_data->work_dvfs_chg,
+							msecs_to_jiffies(TOUCH_BOOSTER_CHG_TIME_9));
+			else
+				schedule_delayed_work(&rmi4_data->work_dvfs_chg,
 							msecs_to_jiffies(TOUCH_BOOSTER_CHG_TIME));
 
-			dev_dbg(&rmi4_data->i2c_client->dev, "TSP DVFS On %d %d %d\n", rmi4_data->boost_level,
-				rmi4_data->dvfs_lock_status, mode);
+			dev_dbg(&rmi4_data->i2c_client->dev, "%s: [TSP_DVFS] level[%d] : DVFS ON\n",
+				__func__, rmi4_data->boost_level);
 
 			rmi4_data->dvfs_lock_status = true;
 		}
-	} else if (on == 2) {
+		break;
+	case TSP_BOOSTER_FORCE_OFF:
 		if (rmi4_data->dvfs_lock_status) {
 			cancel_delayed_work(&rmi4_data->work_dvfs_off);
 			cancel_delayed_work(&rmi4_data->work_dvfs_chg);
 			schedule_work(&rmi4_data->work_dvfs_off.work);
 		}
+		break;
+	default:
+		break;
 	}
 	mutex_unlock(&rmi4_data->dvfs_lock);
 }
-
 
 static int synaptics_init_dvfs(struct synaptics_rmi4_data *rmi4_data)
 {
@@ -1317,7 +1381,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	struct synaptics_rmi4_f12_finger_data *data;
 	struct synaptics_rmi4_f12_finger_data *finger_data;
 #ifdef TSP_BOOSTER
-	bool booster_status = false;
+	bool booster_restart = false;
 #endif
 	fingers_supported = fhandler->num_of_data_points;
 	data_addr = fhandler->full_addr.data_base;
@@ -1431,7 +1495,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			}
 #endif
 #ifdef TSP_BOOSTER
-				booster_status = true;
+				booster_restart = true;
 #endif
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 				dev_info(&rmi4_data->i2c_client->dev, "[%d][P] 0x%02x, x = %d, y = %d, wx = %d, wy = %d\n",
@@ -1485,9 +1549,9 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 
 #ifdef TSP_BOOSTER
 	if (touch_count)
-		synaptics_set_dvfs_lock(rmi4_data, 1, booster_status);
+		synaptics_set_dvfs_lock(rmi4_data, TSP_BOOSTER_ON, booster_restart);
 	else
-		synaptics_set_dvfs_lock(rmi4_data, 0, false);
+		synaptics_set_dvfs_lock(rmi4_data, TSP_BOOSTER_OFF, false);
 #endif
 	return touch_count;
 }
@@ -3442,7 +3506,7 @@ void synaptics_rmi4_release_all_finger(
 #endif
 
 #ifdef TSP_BOOSTER
-	synaptics_set_dvfs_lock(rmi4_data, 2, false);
+	synaptics_set_dvfs_lock(rmi4_data, TSP_BOOSTER_FORCE_OFF, false);
 #endif
 #ifdef USE_CUSTOM_REZERO
 	cancel_delayed_work(&rmi4_data->rezero_work);
@@ -3477,6 +3541,7 @@ static int synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data)
 		rmi4_data->board->power(false);
 		msleep(30);
 		rmi4_data->board->power(true);
+		rmi4_data->current_page = MASK_8BIT;
 
 		msleep(SYNAPTICS_HW_RESET_TIME);
 
@@ -4039,6 +4104,7 @@ static int synaptics_rmi4_start_device(struct synaptics_rmi4_data *rmi4_data)
 	}
 
 	platform_data->power(true);
+	rmi4_data->current_page = MASK_8BIT;
 	rmi4_data->touch_stopped = false;
 
 	if (platform_data->enable_sync)

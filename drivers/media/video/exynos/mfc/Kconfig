@@ -6,6 +6,11 @@ config VIDEO_EXYNOS_MFC
 	---help---
 	  MFC driver for V4L2.
 
+config MFC_USE_SECURE_NODE
+	bool "Use secure node for DRM"
+	depends on VIDEO_EXYNOS_MFC
+	default y
+
 choice
 depends on VIDEO_EXYNOS_MFC
 prompt "MFC version"

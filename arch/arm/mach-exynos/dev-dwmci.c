@@ -89,7 +89,7 @@ static void exynos_dwmci_set_sd_power(u32 enable)
 }
 #endif
 
-static void exynos_dwmci_set_io_timing(void *data, unsigned char timing)
+static void exynos_dwmci_set_io_timing(void *data, unsigned int tuning, unsigned char timing)
 {
 	struct dw_mci *host = (struct dw_mci *)data;
 	struct dw_mci_board *pdata = host->pdata;
@@ -115,27 +115,31 @@ static void exynos_dwmci_set_io_timing(void *data, unsigned char timing)
 	}
 
 	if (timing == MMC_TIMING_MMC_HS200_DDR) {
-		clksel = (pdata->ddr200_timing & 0xfffffff8) | (pdata->clk_smpl >> 1);
-		rddqs |= DWMCI_RDDQS_EN;
+		clksel = (pdata->ddr200_timing & 0xfffffff8) | pdata->clk_smpl;
+		if (!tuning) {
+			rddqs |= DWMCI_RDDQS_EN;
 #if defined(CONFIG_MACH_V1)
-		if (system_rev == 1)
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(160);
-		else if (system_rev >= 2)
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(70);
+			if (system_rev == 1)
+				dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(160);
+			else if (system_rev == 2)
+				dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(70);
+			else if (system_rev >= 3)
+				dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(120);
 #elif defined(CONFIG_MACH_JA_KOR_SKT) || defined(CONFIG_MACH_JA_KOR_KT)
-		if(system_rev == 4)
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(140);
-		else
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(120);
+			if(system_rev == 4)
+				dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(140);
+			else
+				dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(120);
 #elif defined(CONFIG_MACH_JA_KOR_LGT)
-		if(system_rev >= 10)
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(140);
-		else
-			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(120);
+			if(system_rev >= 10)
+				dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(140);
+			else
+				dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(120);
 #else
-		dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(90);
+			dline = DWMCI_FIFO_CLK_DELAY_CTRL(0x2) | DWMCI_RD_DQS_DELAY_CTRL(90);
 #endif
-		host->quirks &= ~DW_MCI_QUIRK_NO_DETECT_EBIT;
+			host->quirks &= ~DW_MCI_QUIRK_NO_DETECT_EBIT;
+			}
 	} else if (timing == MMC_TIMING_MMC_HS200 ||
 			timing == MMC_TIMING_UHS_SDR104) {
 		clksel = (clksel & 0xfff8ffff) | (pdata->clk_drv << 16);

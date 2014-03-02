@@ -417,7 +417,6 @@ static struct s5p_platform_mipi_dsim dsim_platform_data = {
 	.dsim_lcd_config	= &dsim_lcd_info,
 
 	.mipi_power		= mipi_power_control,
-	.part_reset		= s5p_dsim_part_reset,
 	.init_d_phy		= s5p_dsim_init_d_phy,
 	.get_fb_frame_done	= NULL,
 	.trigger		= NULL,
