@@ -69,8 +69,8 @@ err:
 
 static int convert_adc_to_temp(struct ssp_data *data, unsigned int adc)
 {
-	u8 low = 0, mid = 0;
-	u8 high;
+	int low = 0, mid = 0;
+	int high;
 
 	if (!data->cp_thm_adc_table || !data->cp_thm_adc_arr_size) {
 		/* using fake temp */
