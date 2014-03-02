@@ -28,13 +28,39 @@
 #endif
 #include "synaptics_i2c_rmi.h"
 
-static unsigned int CPU_QOS_FREQ = 400000;
-static unsigned int MIF_QOS_FREQ = 800000;
-static unsigned int INT_QOS_FREQ = 200000;
+static unsigned int TOUCH_BOOSTER_CHG_TIME = 200;
+static unsigned int TOUCH_BOOSTER_CHG_TIME_9 = 500;
 
-module_param_named(qos_cpu_freq, CPU_QOS_FREQ, uint, S_IWUSR | S_IRUGO);
-module_param_named(qos_mif_freq, MIF_QOS_FREQ, uint, S_IWUSR | S_IRUGO);
-module_param_named(qos_int_freq, INT_QOS_FREQ, uint, S_IWUSR | S_IRUGO);
+static unsigned int TOUCH_BOOSTER_OFF_TIME = 300;
+static unsigned int TOUCH_BOOSTER_OFF_TIME_9 = 1000;
+
+static unsigned int TOUCH_BOOSTER_CPU_FRQ_1 = 600000;
+static unsigned int TOUCH_BOOSTER_CPU_FRQ_9 = 1600000;
+static unsigned int TOUCH_BOOSTER_CPU_FRQ_9_T = 1200000;
+
+static unsigned int TOUCH_BOOSTER_MIF_FRQ_1 = 800000;
+static unsigned int TOUCH_BOOSTER_MIF_FRQ_2 = 400000;
+static unsigned int TOUCH_BOOSTER_MIF_FRQ_9 = 800000;
+
+static unsigned int TOUCH_BOOSTER_INT_FRQ_1 = 200000;
+static unsigned int TOUCH_BOOSTER_INT_FRQ_9 = 400000;
+
+module_param_named(qos_cpu_freq_1, TOUCH_BOOSTER_CPU_FRQ_1, uint, S_IWUSR | S_IRUGO);
+module_param_named(qos_cpu_freq_9_0, TOUCH_BOOSTER_CPU_FRQ_9, uint, S_IWUSR | S_IRUGO);
+module_param_named(qos_cpu_freq_9_1, TOUCH_BOOSTER_CPU_FRQ_9_T, uint, S_IWUSR | S_IRUGO);
+
+module_param_named(qos_mif_freq_1, TOUCH_BOOSTER_MIF_FRQ_1, uint, S_IWUSR | S_IRUGO);
+module_param_named(qos_mif_freq_2, TOUCH_BOOSTER_MIF_FRQ_2, uint, S_IWUSR | S_IRUGO);
+module_param_named(qos_mif_freq_9, TOUCH_BOOSTER_MIF_FRQ_9, uint, S_IWUSR | S_IRUGO);
+
+module_param_named(qos_int_freq_1, TOUCH_BOOSTER_INT_FRQ_1, uint, S_IWUSR | S_IRUGO);
+module_param_named(qos_int_freq_9, TOUCH_BOOSTER_INT_FRQ_9, uint, S_IWUSR | S_IRUGO);
+
+module_param_named(qos_off_time_1, TOUCH_BOOSTER_OFF_TIME, uint, S_IWUSR | S_IRUGO);
+module_param_named(qos_off_time_9, TOUCH_BOOSTER_OFF_TIME_9, uint, S_IWUSR | S_IRUGO);
+
+module_param_named(qos_charge_time_1, TOUCH_BOOSTER_CHG_TIME, uint, S_IWUSR | S_IRUGO);
+module_param_named(qos_charge_time_9, TOUCH_BOOSTER_CHG_TIME_9, uint, S_IWUSR | S_IRUGO);
 
 #define DRIVER_NAME "synaptics_rmi4_i2c"
 
