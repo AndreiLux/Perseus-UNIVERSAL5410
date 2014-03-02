@@ -103,19 +103,13 @@ static void change_sensor_delay(struct ssp_data *data,
 
 		break;
 	default:
-		data->aiCheckStatus[iSensorType] = ADD_SENSOR_STATE;
+		break;
 	}
 }
 
 /*************************************************************************/
 /* SSP data enable function                                              */
 /*************************************************************************/
-#if 0
-static int ssp_add_sensor(struct ssp_data *data, unsigned int uChangedSensor)
-{
-	return 0;
-}
-#endif
 static int ssp_remove_sensor(struct ssp_data *data,
 	unsigned int uChangedSensor, unsigned int uNewEnable)
 {
@@ -127,20 +121,7 @@ static int ssp_remove_sensor(struct ssp_data *data,
 
 	data->adDelayBuf[uChangedSensor] = DEFUALT_POLLING_DELAY;
 
-	if (data->aiCheckStatus[uChangedSensor] == INITIALIZATION_STATE) {
-		data->aiCheckStatus[uChangedSensor] = NO_SENSOR_STATE;
-		if (uChangedSensor == ACCELEROMETER_SENSOR)
-			accel_open_calibration(data);
-		else if (uChangedSensor == GYROSCOPE_SENSOR)
-			gyro_open_calibration(data);
-		else if (uChangedSensor == PRESSURE_SENSOR)
-			pressure_open_calibration(data);
-		else if (uChangedSensor == PROXIMITY_SENSOR) {
-			proximity_open_lcd_ldi(data);
-			proximity_open_calibration(data);
-		}
-		return 0;
-	} else if (uChangedSensor == ORIENTATION_SENSOR) {
+	if (uChangedSensor == ORIENTATION_SENSOR) {
 		if (!(atomic_read(&data->aSensorEnable)
 			& (1 << ACCELEROMETER_SENSOR))) {
 			uChangedSensor = ACCELEROMETER_SENSOR;
@@ -183,6 +164,29 @@ static ssize_t show_sensors_enable(struct device *dev,
 	return sprintf(buf, "%9u\n", atomic_read(&data->aSensorEnable));
 }
 
+static void ssp_load_cal_data(struct ssp_data *data, unsigned int uChangedSensor)
+{
+	switch (uChangedSensor) {
+		case ACCELEROMETER_SENSOR :
+			accel_open_calibration(data);
+			break;
+		case GYROSCOPE_SENSOR :
+			gyro_open_calibration(data);
+			break;
+		case PRESSURE_SENSOR :
+			pressure_open_calibration(data);
+			break;
+		case PROXIMITY_SENSOR :
+			proximity_open_lcd_ldi(data);
+			proximity_open_calibration(data);
+			break;
+		default :
+			break;
+	}
+	pr_info("[SSP] : %s, uChangedSensor : 0x%x\n", __func__, uChangedSensor);
+
+}
+
 static ssize_t set_sensors_enable(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -207,11 +211,13 @@ static ssize_t set_sensors_enable(struct device *dev,
 			if (!(uNewEnable & (1 << uChangedSensor)))
 				ssp_remove_sensor(data, uChangedSensor,
 					uNewEnable); /* disable */
-#if 0 /* In case of enabling, we will send instruction on change_sensor_delay. */
-			else
-				ssp_add_sensor(data, uChangedSensor);
-#endif
-
+			else /* Change to ADD_SENSOR_STATE from KitKat */ {
+				if (data->aiCheckStatus[uChangedSensor] == INITIALIZATION_STATE) {
+					/* Load calibration data */
+					ssp_load_cal_data(data, uChangedSensor);
+				}
+				data->aiCheckStatus[uChangedSensor] = ADD_SENSOR_STATE;
+			}
 			break;
 		}
 

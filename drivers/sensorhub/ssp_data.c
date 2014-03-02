@@ -102,7 +102,7 @@ static void get_pressure_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	iTemp = (int)pchRcvDataFrame[(*iDataIdx)++];
 	iTemp <<= 8;
 	iTemp += (int)pchRcvDataFrame[(*iDataIdx)++];
-	sensorsdata->pressure[1] = iTemp;
+	sensorsdata->pressure[1] = (s16)iTemp;
 }
 
 static void get_gesture_sensordata(char *pchRcvDataFrame, int *iDataIdx,

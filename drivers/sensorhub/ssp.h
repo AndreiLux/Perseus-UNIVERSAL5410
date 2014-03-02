@@ -39,7 +39,7 @@
 #include "ssp_sensorhub.h"
 #endif
 
-#undef FEATURE_STEP_SENSOR
+#define FEATURE_STEP_SENSOR
 #define SSP_DBG		1
 
 #define SUCCESS		1
