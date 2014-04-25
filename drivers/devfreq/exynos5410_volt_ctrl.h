@@ -26,4 +26,7 @@ struct exynos5_volt_info {
 	unsigned int cur_lv;
 };
 
+extern int exynos5_volt_ctrl(enum exynos5_volt_id target,
+			unsigned int target_volt, unsigned int target_freq);
+
 #endif /* _EXYNOS5_VOLT_INFO_H */

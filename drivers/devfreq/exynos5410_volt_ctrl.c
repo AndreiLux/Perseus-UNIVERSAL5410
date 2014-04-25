@@ -38,16 +38,16 @@ extern unsigned int system_rev;
 
 struct mutex voltlock;
 
-static struct exynos5_volt_info exynos5_vdd_int = {
+struct exynos5_volt_info exynos5_vdd_int = {
 	.idx	= VDD_INT,
 };
 
-static struct exynos5_volt_info exynos5_vdd_mif = {
+struct exynos5_volt_info exynos5_vdd_mif = {
 	.idx	= VDD_MIF,
 };
 
 #if defined(CONFIG_REGULATOR_S2MPS11)
-static struct exynos5_volt_info exynos5_vdd_memio = {
+struct exynos5_volt_info exynos5_vdd_memio = {
 	.idx	= VDD_MEMIO,
 };
 #endif
