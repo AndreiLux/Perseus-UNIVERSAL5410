@@ -1211,7 +1211,7 @@ static int __init exynos5_busfreq_int_init(void)
 {
 	return platform_driver_register(&exynos5_busfreq_int_driver);
 }
-subsys_initcall(exynos5_busfreq_int_init);
+late_initcall(exynos5_busfreq_int_init);
 
 static void __exit exynos5_busfreq_int_exit(void)
 {
