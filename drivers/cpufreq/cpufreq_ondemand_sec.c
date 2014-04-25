@@ -1094,9 +1094,13 @@ static int __ref cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		mutex_destroy(&this_dbs_info->timer_mutex);
 		dbs_enable--;
 		mutex_unlock(&dbs_mutex);
-		if (!dbs_enable)
+		if (!dbs_enable) {
 			sysfs_remove_group(cpufreq_global_kobject,
 					   &dbs_attr_group);
+
+			sysfs_remove_group(cpufreq_global_kobject,
+					   &dbs_attr_group2);
+		}
 
 		fb_unregister_client(&fb_block);
 		break;
